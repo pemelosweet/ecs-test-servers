@@ -10,6 +10,7 @@ from typing import List, Optional
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -67,6 +68,20 @@ def init_db():
                 stored_name TEXT NOT NULL,
                 size INTEGER,
                 content_type TEXT
+            );
+            CREATE TABLE IF NOT EXISTS orgs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                org_name TEXT NOT NULL,
+                org_code TEXT,
+                org_type TEXT,
+                legal_person TEXT,
+                phone TEXT,
+                email TEXT,
+                address TEXT,
+                establish_date TEXT,
+                status INTEGER,
+                description TEXT,
+                created_at TEXT NOT NULL
             );
             """
         )
@@ -204,3 +219,68 @@ def download_file(file_id: int):
     if not path.exists():
         raise HTTPException(404, "文件已丢失")
     return FileResponse(path, filename=row["filename"], media_type=row["content_type"])
+
+
+# ==================== 组织信息 ====================
+class OrgInfo(BaseModel):
+    orgName: str
+    orgCode: Optional[str] = None
+    orgType: Optional[str] = None
+    legalPerson: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    establishDate: Optional[str] = None
+    status: bool = True
+    description: Optional[str] = None
+
+
+def serialize_org(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "orgName": row["org_name"],
+        "orgCode": row["org_code"],
+        "orgType": row["org_type"],
+        "legalPerson": row["legal_person"],
+        "phone": row["phone"],
+        "email": row["email"],
+        "address": row["address"],
+        "establishDate": row["establish_date"],
+        "status": bool(row["status"]),
+        "description": row["description"],
+        "createdAt": row["created_at"],
+    }
+
+
+@app.post("/api/org")
+def save_org(org: OrgInfo):
+    with get_db() as db:
+        cur = db.execute(
+            "INSERT INTO orgs (org_name, org_code, org_type, legal_person, phone, email, "
+            "address, establish_date, status, description, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                org.orgName,
+                org.orgCode,
+                org.orgType,
+                org.legalPerson,
+                org.phone,
+                org.email,
+                org.address,
+                org.establishDate,
+                int(org.status),
+                org.description,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        row = db.execute("SELECT * FROM orgs WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return serialize_org(row)
+
+
+@app.get("/api/org/latest")
+def get_latest_org():
+    with get_db() as db:
+        row = db.execute("SELECT * FROM orgs ORDER BY id DESC LIMIT 1").fetchone()
+        if row is None:
+            raise HTTPException(404, "暂无组织信息")
+        return serialize_org(row)
