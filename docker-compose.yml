@@ -1,0 +1,22 @@
+# 部署说明：将前后端仓库克隆到同一父目录下，然后在此文件所在目录执行 docker compose up -d --build
+# 目录结构：
+#   parent/
+#   ├── server/    (本仓库)
+#   └── tset/      (前端仓库)
+
+services:
+  backend:
+    build: .
+    container_name: form-backend
+    volumes:
+      - ./data:/app/data  # SQLite + 附件持久化
+    restart: unless-stopped
+
+  frontend:
+    build: ../tset
+    container_name: form-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
