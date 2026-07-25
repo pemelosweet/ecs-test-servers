@@ -1,8 +1,7 @@
-# 部署说明：将前后端仓库克隆到同一父目录下，然后在此文件所在目录执行 docker compose up -d --build
-# 目录结构：
-#   parent/
-#   ├── server/    (本仓库)
-#   └── tset/      (前端仓库)
+# 部署说明：在 /opt/backend 目录执行 docker compose up -d --build
+# ECS 目录结构：
+#   /opt/backend          (后端仓库，本文件所在目录)
+#   /var/www/frontend     (前端仓库)
 
 services:
   backend:
@@ -13,7 +12,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ../tset
+    build: /var/www/frontend
     container_name: form-frontend
     ports:
       - "80:80"
