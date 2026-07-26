@@ -16,6 +16,9 @@ services:
     container_name: form-frontend
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro  # HTTPS 证书（只读挂载）
     depends_on:
       - backend
     restart: unless-stopped
