@@ -1,5 +1,6 @@
 # 表单数据存储/回填服务（FastAPI + SQLite）
 # 启动：uvicorn main:app --reload --port 8000
+import json
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -81,6 +82,32 @@ def init_db():
                 establish_date TEXT,
                 status INTEGER,
                 description TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS avatar_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL,
+                stored_name TEXT NOT NULL,
+                size INTEGER,
+                content_type TEXT
+            );
+            CREATE TABLE IF NOT EXISTS profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                gender TEXT,
+                birthday TEXT,
+                avatar_file_id INTEGER REFERENCES avatar_files(id),
+                phone TEXT,
+                email TEXT,
+                address TEXT,
+                website TEXT,
+                bio TEXT,
+                education TEXT,
+                work TEXT,
+                skills TEXT,
+                projects TEXT,
+                social_links TEXT,
+                interests TEXT,
                 created_at TEXT NOT NULL
             );
             """
@@ -284,3 +311,125 @@ def get_latest_org():
         if row is None:
             raise HTTPException(404, "暂无组织信息")
         return serialize_org(row)
+
+
+# ==================== 个人档案 ====================
+AVATAR_MAX_SIZE_MB = 5
+AVATAR_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def _parse_json_field(raw):
+    """把 SQLite 里存的 JSON 字符串反序列化为 Python 对象；空或非法时返回 None。"""
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def serialize_profile(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "gender": row["gender"],
+        "birthday": row["birthday"],
+        "avatarUrl": f"/api/avatar/{row['avatar_file_id']}" if row["avatar_file_id"] else None,
+        "phone": row["phone"],
+        "email": row["email"],
+        "address": row["address"],
+        "website": row["website"],
+        "bio": row["bio"],
+        "education": _parse_json_field(row["education"]),
+        "work": _parse_json_field(row["work"]),
+        "skills": _parse_json_field(row["skills"]),
+        "projects": _parse_json_field(row["projects"]),
+        "socialLinks": _parse_json_field(row["social_links"]),
+        "interests": _parse_json_field(row["interests"]),
+        "createdAt": row["created_at"],
+    }
+
+
+@app.post("/api/profile")
+async def save_profile(
+    name: str = Form(...),
+    gender: Optional[str] = Form(None),
+    birthday: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    address: Optional[str] = Form(None),
+    website: Optional[str] = Form(None),
+    bio: Optional[str] = Form(None),
+    education: Optional[str] = Form(None),
+    work: Optional[str] = Form(None),
+    skills: Optional[str] = Form(None),
+    projects: Optional[str] = Form(None),
+    social_links: Optional[str] = Form(None),
+    interests: Optional[str] = Form(None),
+    avatar: Optional[UploadFile] = File(None),
+):
+    # 校验头像
+    avatar_data = None
+    if avatar is not None and avatar.filename:
+        avatar_data = await avatar.read()
+        if len(avatar_data) > AVATAR_MAX_SIZE_MB * 1024 * 1024:
+            raise HTTPException(400, f"头像不能超过 {AVATAR_MAX_SIZE_MB}MB")
+        if avatar.content_type not in AVATAR_ALLOWED_TYPES:
+            raise HTTPException(400, "头像仅支持 JPG/PNG/WebP")
+
+    # 校验 JSON 字段（避免脏数据）
+    for raw, label in [
+        (education, "education"), (work, "work"), (skills, "skills"),
+        (projects, "projects"), (social_links, "social_links"), (interests, "interests"),
+    ]:
+        if raw is not None:
+            try:
+                json.loads(raw)
+            except json.JSONDecodeError:
+                raise HTTPException(400, f"{label} 必须是合法 JSON 字符串")
+
+    with get_db() as db:
+        avatar_file_id = None
+        if avatar_data:
+            stored_name = f"{uuid.uuid4().hex}_{avatar.filename}"
+            (UPLOAD_DIR / stored_name).write_bytes(avatar_data)
+            cur = db.execute(
+                "INSERT INTO avatar_files (filename, stored_name, size, content_type) "
+                "VALUES (?, ?, ?, ?)",
+                (avatar.filename, stored_name, len(avatar_data), avatar.content_type),
+            )
+            avatar_file_id = cur.lastrowid
+
+        cur = db.execute(
+            "INSERT INTO profiles (name, gender, birthday, avatar_file_id, phone, email, "
+            "address, website, bio, education, work, skills, projects, social_links, "
+            "interests, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                name, gender, birthday, avatar_file_id, phone, email, address, website, bio,
+                education, work, skills, projects, social_links, interests,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        row = db.execute("SELECT * FROM profiles WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return serialize_profile(row)
+
+
+@app.get("/api/profile/latest")
+def get_latest_profile():
+    with get_db() as db:
+        row = db.execute("SELECT * FROM profiles ORDER BY id DESC LIMIT 1").fetchone()
+        if row is None:
+            raise HTTPException(404, "暂无个人档案")
+        return serialize_profile(row)
+
+
+@app.get("/api/avatar/{file_id}")
+def download_avatar(file_id: int):
+    with get_db() as db:
+        row = db.execute("SELECT * FROM avatar_files WHERE id = ?", (file_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, "头像不存在")
+    path = UPLOAD_DIR / row["stored_name"]
+    if not path.exists():
+        raise HTTPException(404, "头像文件已丢失")
+    return FileResponse(path, filename=row["filename"], media_type=row["content_type"])
