@@ -70,9 +70,7 @@ def init_db():
                 filename TEXT NOT NULL,
                 stored_name TEXT NOT NULL,
                 size INTEGER,
-                content_type TEXT,
-                object_key TEXT,
-                url TEXT
+                content_type TEXT
             );
             CREATE TABLE IF NOT EXISTS orgs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,9 +91,7 @@ def init_db():
                 filename TEXT NOT NULL,
                 stored_name TEXT NOT NULL,
                 size INTEGER,
-                content_type TEXT,
-                object_key TEXT,
-                url TEXT
+                content_type TEXT
             );
             CREATE TABLE IF NOT EXISTS profiles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,6 +114,17 @@ def init_db():
             );
             """
         )
+        # 增量迁移：为已有表添加 OSS 相关列（幂等，已存在则跳过）
+        for col_sql in [
+            "ALTER TABLE files ADD COLUMN object_key TEXT",
+            "ALTER TABLE files ADD COLUMN url TEXT",
+            "ALTER TABLE avatar_files ADD COLUMN object_key TEXT",
+            "ALTER TABLE avatar_files ADD COLUMN url TEXT",
+        ]:
+            try:
+                db.execute(col_sql)
+            except Exception:
+                pass  # 列已存在，忽略
 
 
 def serialize_form(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
