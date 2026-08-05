@@ -1,4 +1,4 @@
-# 表单数据存储/回填服务（FastAPI + SQLite）
+# 表单数据存储/回填服务（FastAPI + SQLite + 阿里云 OSS）
 # 启动：uvicorn main:app --reload --port 8000
 import json
 import sqlite3
@@ -10,8 +10,10 @@ from typing import List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
+
+from oss_client import generate_object_key, upload_file
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -68,7 +70,9 @@ def init_db():
                 filename TEXT NOT NULL,
                 stored_name TEXT NOT NULL,
                 size INTEGER,
-                content_type TEXT
+                content_type TEXT,
+                object_key TEXT,
+                url TEXT
             );
             CREATE TABLE IF NOT EXISTS orgs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,7 +93,9 @@ def init_db():
                 filename TEXT NOT NULL,
                 stored_name TEXT NOT NULL,
                 size INTEGER,
-                content_type TEXT
+                content_type TEXT,
+                object_key TEXT,
+                url TEXT
             );
             CREATE TABLE IF NOT EXISTS profiles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,7 +122,7 @@ def init_db():
 
 def serialize_form(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
     files = db.execute(
-        "SELECT id, filename, size, content_type FROM files WHERE form_id = ?",
+        "SELECT id, filename, size, content_type, url FROM files WHERE form_id = ?",
         (row["id"],),
     ).fetchall()
     return {
@@ -135,7 +141,7 @@ def serialize_form(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
                 "name": f["filename"],
                 "size": f["size"],
                 "contentType": f["content_type"],
-                "url": f"/api/files/{f['id']}",
+                "url": f["url"] or f"/api/files/{f['id']}",
             }
             for f in files
         ],
@@ -185,17 +191,18 @@ async def create_form(
                 (form_id, old["filename"], old["stored_name"], old["size"], old["content_type"]),
             )
 
-        # 保存新上传的文件
+        # 保存新上传的文件（上传到 OSS）
         for up in files:
             content = await up.read()
             if len(content) > MAX_FILE_SIZE_MB * 1024 * 1024:
                 raise HTTPException(400, f"{up.filename} 超过 {MAX_FILE_SIZE_MB}MB")
             stored_name = f"{uuid.uuid4().hex}_{up.filename}"
-            (UPLOAD_DIR / stored_name).write_bytes(content)
+            object_key = generate_object_key("attachments", up.filename)
+            file_url = upload_file(content, object_key, up.content_type or "application/octet-stream")
             db.execute(
-                "INSERT INTO files (form_id, filename, stored_name, size, content_type) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (form_id, up.filename, stored_name, len(content), up.content_type),
+                "INSERT INTO files (form_id, filename, stored_name, size, content_type, object_key, url) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (form_id, up.filename, stored_name, len(content), up.content_type, object_key, file_url),
             )
 
         row = db.execute("SELECT * FROM forms WHERE id = ?", (form_id,)).fetchone()
@@ -242,6 +249,10 @@ def download_file(file_id: int):
         row = db.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
     if row is None:
         raise HTTPException(404, "文件不存在")
+    # 优先返回 OSS URL 重定向
+    if row["url"]:
+        return RedirectResponse(url=row["url"], status_code=302)
+    # 兼容旧数据：从本地读取
     path = UPLOAD_DIR / row["stored_name"]
     if not path.exists():
         raise HTTPException(404, "文件已丢失")
@@ -328,13 +339,24 @@ def _parse_json_field(raw):
         return None
 
 
-def serialize_profile(row: sqlite3.Row) -> dict:
+def serialize_profile(db: sqlite3.Connection, row: sqlite3.Row) -> dict:
+    # 从 avatar_files 表查 OSS URL
+    avatar_url = None
+    if row["avatar_file_id"]:
+        af = db.execute(
+            "SELECT url FROM avatar_files WHERE id = ?", (row["avatar_file_id"],)
+        ).fetchone()
+        if af and af["url"]:
+            avatar_url = af["url"]
+        elif af:
+            avatar_url = f"/api/avatar/{row['avatar_file_id']}"
+
     return {
         "id": row["id"],
         "name": row["name"],
         "gender": row["gender"],
         "birthday": row["birthday"],
-        "avatarUrl": f"/api/avatar/{row['avatar_file_id']}" if row["avatar_file_id"] else None,
+        "avatarUrl": avatar_url,
         "phone": row["phone"],
         "email": row["email"],
         "address": row["address"],
@@ -391,14 +413,21 @@ async def save_profile(
     with get_db() as db:
         avatar_file_id = None
         if avatar_data:
-            stored_name = f"{uuid.uuid4().hex}_{avatar.filename}"
-            (UPLOAD_DIR / stored_name).write_bytes(avatar_data)
+            object_key = generate_object_key("avatars", avatar.filename)
+            avatar_url = upload_file(avatar_data, object_key, avatar.content_type)
             cur = db.execute(
-                "INSERT INTO avatar_files (filename, stored_name, size, content_type) "
-                "VALUES (?, ?, ?, ?)",
-                (avatar.filename, stored_name, len(avatar_data), avatar.content_type),
+                "INSERT INTO avatar_files (filename, stored_name, size, content_type, object_key, url) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (avatar.filename, object_key.split("/")[-1], len(avatar_data), avatar.content_type, object_key, avatar_url),
             )
             avatar_file_id = cur.lastrowid
+        else:
+            # 未上传新头像时，复用上一条档案的头像
+            prev = db.execute(
+                "SELECT avatar_file_id FROM profiles ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if prev and prev["avatar_file_id"]:
+                avatar_file_id = prev["avatar_file_id"]
 
         cur = db.execute(
             "INSERT INTO profiles (name, gender, birthday, avatar_file_id, phone, email, "
@@ -411,7 +440,7 @@ async def save_profile(
             ),
         )
         row = db.execute("SELECT * FROM profiles WHERE id = ?", (cur.lastrowid,)).fetchone()
-        return serialize_profile(row)
+        return serialize_profile(db, row)
 
 
 @app.get("/api/profile/latest")
@@ -420,7 +449,7 @@ def get_latest_profile():
         row = db.execute("SELECT * FROM profiles ORDER BY id DESC LIMIT 1").fetchone()
         if row is None:
             raise HTTPException(404, "暂无个人档案")
-        return serialize_profile(row)
+        return serialize_profile(db, row)
 
 
 @app.get("/api/avatar/{file_id}")
@@ -429,6 +458,10 @@ def download_avatar(file_id: int):
         row = db.execute("SELECT * FROM avatar_files WHERE id = ?", (file_id,)).fetchone()
     if row is None:
         raise HTTPException(404, "头像不存在")
+    # 优先返回 OSS URL 重定向
+    if row["url"]:
+        return RedirectResponse(url=row["url"], status_code=302)
+    # 兼容旧数据：从本地读取
     path = UPLOAD_DIR / row["stored_name"]
     if not path.exists():
         raise HTTPException(404, "头像文件已丢失")
