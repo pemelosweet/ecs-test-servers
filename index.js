@@ -25,6 +25,36 @@ const parseServer = new ParseServer({
   cloud: __dirname + '/cloud/main.js',
   // 允许不带 masterKey 直接创建新 class（仅限开发环境）
   allowClientClassCreation: !config.IS_PRODUCTION,
+  // 注册唯一入口是 Cloud 函数 register（带滑块校验）；
+  // 直接 POST /users 建号由 cloud/main.js 的 beforeSave('_User') 拦截（v9 已移除 allowClientUserCreation）
+  // 限流：同一 IP 窗口内超限直接拒绝（挡高频暴力破解/刷接口）
+  rateLimit: [
+    {
+      requestPath: '/login',
+      requestTimeWindow: 60000,
+      requestCount: 10,
+      errorResponseMessage: '登录尝试过于频繁，请 1 分钟后再试',
+    },
+    {
+      requestPath: '/functions/register',
+      requestTimeWindow: 60000,
+      requestCount: 10,
+      errorResponseMessage: '注册请求过于频繁，请 1 分钟后再试',
+    },
+    {
+      requestPath: '/functions/captchaNew',
+      requestTimeWindow: 60000,
+      requestCount: 30,
+      errorResponseMessage: '验证码请求过于频繁，请稍后再试',
+    },
+  ],
+  // 账户锁：连续输错 5 次锁 15 分钟（挡低频字典攻击）
+  accountLockout: { duration: 15, threshold: 5 },
+  // 密码策略：最少 8 位（v9 用 validatorPattern 表达）
+  passwordPolicy: {
+    validatorPattern: '^.{8,}$',
+    validationError: '密码至少 8 位',
+  },
   // 文件上传大小限制 10MB
   maxUploadSize: '10mb',
   ...(ossAdapter && { filesAdapter: ossAdapter }),
