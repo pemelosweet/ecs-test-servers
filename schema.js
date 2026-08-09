@@ -1,5 +1,15 @@
-// Schema 初始化：启动时幂等创建 Org / Profile 两个 class
+// Schema 初始化：声明 Org / Profile 的表结构与访问权限（幂等）
 const config = require('./config');
+
+// 类级权限（CLP）：声明式替代业务代码里的鉴权逻辑
+// 读公开（博客匿名访问），写需要登录
+const CLPS = {
+  find: { '*': true },
+  get: { '*': true },
+  create: { requiresAuthentication: true },
+  update: { requiresAuthentication: true },
+  delete: { requiresAuthentication: true },
+};
 
 // 表结构定义：字段名 → 类型（required 表示必填）
 const SCHEMAS = {
@@ -34,6 +44,33 @@ const SCHEMAS = {
   },
 };
 
+// 按定义构建 Parse.Schema（含 author 指针字段和 CLP）
+function buildSchema(className, fields) {
+  const Parse = require('parse/node');
+  const schema = new Parse.Schema(className);
+
+  for (const [name, def] of Object.entries(fields)) {
+    if (def.type === 'File') {
+      schema.addFile(name);
+    } else if (def.type === 'Array') {
+      schema.addArray(name);
+    } else if (def.type === 'Object') {
+      schema.addObject(name);
+    } else if (def.type === 'Boolean') {
+      schema.addBoolean(name, def.defaultValue);
+    } else if (def.type === 'Pointer') {
+      schema.addPointer(name, def.targetClass);
+    } else {
+      schema.addString(name, def.required);
+    }
+  }
+
+  // 提交人：指向 _User，由 beforeSave 自动填充
+  schema.addPointer('author', '_User');
+  schema.setCLP(CLPS);
+  return schema;
+}
+
 async function initSchema() {
   const Parse = require('parse/node');
   try {
@@ -44,28 +81,20 @@ async function initSchema() {
   Parse.serverURL = config.SERVER_URL;
 
   for (const [className, fields] of Object.entries(SCHEMAS)) {
+    const schema = buildSchema(className, fields);
+
+    // 先查表是否已存在，避免 Parse Server 内部打印 "already exists" 噪音日志
     try {
-      const schema = new Parse.Schema(className);
-      for (const [name, def] of Object.entries(fields)) {
-        if (def.type === 'File') {
-          schema.addFile(name);
-        } else if (def.type === 'Array') {
-          schema.addArray(name);
-        } else if (def.type === 'Object') {
-          schema.addObject(name);
-        } else if (def.type === 'Boolean') {
-          schema.addBoolean(name, def.defaultValue);
-        } else {
-          schema.addString(name, def.required);
-        }
-      }
-      await schema.save();
-      console.log(`Schema "${className}" ready`);
-    } catch (err) {
-      // class 已存在时忽略
-      if (err.message?.includes('already exists')) {
-        console.log(`Schema "${className}" already exists`);
-      } else {
+      await new Parse.Schema(className).get();
+      // 表已存在：用 update 同步新增字段和 CLP（已有字段不受影响）
+      await schema.update();
+      console.log(`Schema "${className}" updated`);
+    } catch {
+      // 表不存在：创建
+      try {
+        await schema.save();
+        console.log(`Schema "${className}" ready`);
+      } catch (err) {
         console.error(`Schema "${className}" error:`, err.message);
       }
     }
