@@ -59,6 +59,7 @@ push ecs-blog ──────────dispatch─┘        │ runs-on: s
 ```
 
 - `ecs-frontend/.github/workflows/deploy.yml`：监听 push + `repository_dispatch`，在自托管 runner 上跑 update.sh；`concurrency` 保证同一时间只有一个部署任务
+- 生产 `.env` 由 deploy.yml 每次部署时从 GitHub Secret `PROD_ENV`（整份文件存成一个 secret）下发写出；改配置 = 改 Secret 后重新触发部署，服务器手改会在下次部署被覆盖
 - `ecs-test-servers` / `ecs-blog` 的 `.github/workflows/notify-deploy.yml`：push 后用 `DEPLOY_PAT`（GitHub Secrets 中的 Personal Access Token）调 `repository_dispatch` 通知 ecs-frontend
 
 ## 5. 关键概念
@@ -82,6 +83,8 @@ curl -X POST -H "Authorization: token <PAT>" \
   -H "Accept: application/vnd.github+json" \
   https://api.github.com/repos/pemelosweet/ecs-frontend/dispatches \
   -d '{"event_type":"deploy"}'
+
+# 改生产配置：ecs-frontend → Settings → Secrets → 更新 PROD_ENV → 随便 push 或手动 dispatch 生效
 ```
 
 ## 7. 已知边界
