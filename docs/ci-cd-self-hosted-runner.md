@@ -87,4 +87,18 @@ curl -X POST -H "Authorization: token <PAT>" \
 ## 7. 已知边界
 
 - 一次 push 多个仓库时会产生多次部署任务（push 触发 + dispatch 触发），runner 单任务串行执行，update.sh 幂等，重复执行无副作用，只是多花 1-2 分钟
+- 多个部署任务同时排队时，GitHub 只保留最新一个、取消较旧的排队任务，注解显示 `Canceling since a higher priority waiting request for deploy exists` 且记为红叉——**这是去重机制，不是部署失败**，最终线上一定是最新代码
 - runner 以安装用户（root）身份执行脚本，update.sh 内所有命令都具备 root 权限，脚本内容需保持可信（仅维护者能 push main）
+
+## 8. 端到端搭建清单（从零重跑）
+
+按顺序执行，细节见前文各节与 `ecs-frontend/deploy/DEPLOY.md`：
+
+1. **ECS 基础环境**：Node 24 + pm2 + MongoDB + nginx（DEPLOY.md 第 1~4 节）
+2. **后端配置**：填 `/opt/xmg/ecs-test-servers/.env` 真实值，`grep -c 'your-' .env` 必须为 0；`pm2 start ecosystem.config.js && pm2 save`
+3. **前端首部署**：`bash /opt/xmg/ecs-frontend/deploy/update.sh`（首次手动跑一次，之后全自动）
+4. **创建 PAT**：GitHub → Developer settings → Personal access tokens → Tokens (classic)，只勾 `repo`，生成后立即复制
+5. **配 Secrets**：ecs-test-servers 与 ecs-blog 两个仓库各加 `DEPLOY_PAT`（ecs-frontend 不需要）
+6. **装 runner**：ecs-frontend → Settings → Actions → Runners → New self-hosted runner，在 ECS 执行页面给出的命令；root 用户需 `RUNNER_ALLOW_RUNASROOT=1`（写入 runner 目录 `.env` 持久化）；最后 `./svc.sh install root && ./svc.sh start`，页面状态变绿 Idle
+7. **推 workflow**：提交三个仓库的 `.github/workflows/` 文件
+8. **验证**：push 后 ecs-frontend 的 Actions 页 `Deploy` 变绿；排队旧任务红叉属正常去重

@@ -9,8 +9,8 @@ module.exports = {
   IS_PRODUCTION: process.env.NODE_ENV === 'production',
 
   // Dashboard 账号
-  DASHBOARD_USER: process.env.PARSE_DASHBOARD_USER || 'admin',
-  DASHBOARD_PASSWORD: process.env.PARSE_DASHBOARD_PASSWORD || 'admin123',
+  DASHBOARD_USER: process.env.PARSE_DASHBOARD_USER ,
+  DASHBOARD_PASSWORD: process.env.PARSE_DASHBOARD_PASSWORD ,
 
   // 阿里云 OSS（未配置 OSS_BUCKET_NAME 时回退 MongoDB GridFS）
   OSS: {
