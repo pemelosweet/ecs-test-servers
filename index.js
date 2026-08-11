@@ -42,10 +42,10 @@ const parseServer = new ParseServer({
       errorResponseMessage: '注册请求过于频繁，请 1 分钟后再试',
     },
     {
-      requestPath: '/functions/captchaNew',
+      requestPath: '/functions/smsSend',
       requestTimeWindow: 60000,
-      requestCount: 30,
-      errorResponseMessage: '验证码请求过于频繁，请稍后再试',
+      requestCount: 5,
+      errorResponseMessage: '短信发送过于频繁，请稍后再试',
     },
   ],
   // 账户锁：连续输错 5 次锁 15 分钟（挡低频字典攻击）

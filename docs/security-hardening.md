@@ -74,20 +74,24 @@
 - 原理：表单里放人类看不见、脚本会填的隐藏字段；填了即判机器
 - 强度：只挡最 naive 的脚本，**零成本零感知**，常作免费加菜
 
-## 3. 本项目落地（四层）
+## 3. 本项目落地（五层）
 
-1. **限流**（Parse `rateLimit`）：`/login`、`/functions/register` 每 IP 每分钟 10 次，`/functions/captchaNew` 30 次 → 高速穷举直接废
+1. **限流**（Parse `rateLimit`）：`/login`、`/functions/register` 每 IP 每分钟 10 次，`/functions/smsSend` 5 次 → 高速穷举/刷短信直接废
 2. **账户锁**（`accountLockout`）：连续错 5 次锁 15 分钟 → 低频字典攻击废
 3. **密码策略**（`passwordPolicy`）：最少 8 位 → 防弱密码被秒破
-4. **滑块 + 注册入口收口**：
-   - `allowClientUserCreation: false` → 直接 POST `/users` 建号被禁，**机器人绕不开前端**
-   - 注册唯一入口 = Cloud 函数 `register`：先验滑块（坐标容差 ±6px、一次性、5 分钟过期）再 master key 建号
-   - 滑块为自研轻量版（SVG 缺口图 + 前端拖拽），零第三方依赖
+4. **注册入口收口**：`beforeSave('_User')` 拦截非 master key 建号（v9 已移除 allowClientUserCreation），唯一入口 = Cloud 函数 `register`
+5. **人机 + 实名双重验证**（均为阿里云号码认证服务，同产品族同账单）：
+   - **图形认证**：前端 ct4.js SDK（滑动拼图/点选等形态由阿里云策略下发），验证通过后服务端用 appKey 对 lot_number 做 HMAC-SHA256 签名调 `https://captcha.alicaptcha.com/validate` 二次校验。**当前状态：临时停用**（开关置 false），恢复方式见第 4 节
+   - **短信验证码**：`SendSmsVerifyCode`（##code## 阿里云生码）+ `CheckSmsVerifyCode` 托管校验，本端不存码
 
-## 4. 自研滑块的已知边界与升级路径
+## 4. 选型变更记录：自研滑块 → 阿里云图形认证
 
-- 边界：缺口坐标在 SVG 里可被解析，挡不住"会读 SVG 的定向攻击者"；但配合限流（10 次/分钟）穷举 300 个 x 坐标需 30 分钟且触发锁号，个人站场景成本不可接受地高，攻击者会放弃
-- 升级路径：流量变大或遭遇定向攻击时，把 `captchaNew`/`register` 内的校验替换为腾讯验证码/极验的 ticket 校验（前端换 SDK、后端换验票 API），架构不变
+- **背景**：初版为教学自研滑块（SVG 缺口图 + 前端拖拽），缺口坐标可被解析，挡不住会读图的定向攻击者；行内生产产品不用自研滑块
+- **候选**：阿里云验证码 2.0 / 极验 / 腾讯天御 / 阿里云号码认证服务-图形认证
+- **结论**：选**号码认证服务-图形认证**——与短信验证码同产品族，一个控制台一套账单；前端 ct4.js 自托管、后端一个 HTTP 验签接口，无额外 SDK 依赖
+- **临时停用（开关式，非删代码）**：前后端各有一个 `GRAPHIC_CAPTCHA_ENABLED` 开关（前端 `RegisterPage/index.jsx` + 后端 `cloud/main.js`），当前均为 `false`——注册跳过图形认证弹窗、服务端跳过二次校验，仅保留短信验证。恢复：两处开关同步置 `true` 即可，appId/appKey/ct4.js 均已就位无需重配
+- **边界**：二次校验接口异常时按官方建议放行（不阻断业务）；ct4.js 需从控制台下载后自托管（public/ct4.js），不可本地魔改
+- **升级路径**：遭遇定向攻击时可同控制台切换验证形态（点选/九宫格），或升级阿里云验证码 2.0 无痕验证，架构不变
 
 ## 5. 第三方验证码服务对比（行内真正在用的）
 
@@ -110,17 +114,19 @@
 2. **设备指纹 + 风险情报**：模拟器、代理 IP、机房段在验证码之前就被识别拦截
 3. **持续对抗**：厂商有专门团队跟打码平台/脚本对抗升级，自研是"一次性"的
 
-本项目自研版的定位：**教学版**——零依赖、不开通平台账号、完整演示"下发→交互→校验"链路；不是生产版。个人站流量下安全性够用（见第 4 节边界分析）。
+本项目初版自研滑块的定位：**教学版**——零依赖、完整演示"下发→交互→校验"链路；已于选型变更后升级为阿里云图形认证（见第 4 节）。
 
-### 换第三方的接法（架构不变，约半小时）
+### 第三方接入实际接法（已落地）
 
-1. 开通服务（推荐阿里云验证码 2.0，同账号同账单），拿前端 AppID + 后端 AppSecret
-2. 前端 RegisterPage：自研拖拽块换成厂商 SDK，验证通过拿到 `ticket`
-3. 后端 `register`：坐标比对换成调厂商验票 API，其余逻辑（限流/锁号/建号）不动
+1. 号码认证控制台新增图形认证方案，拿 appId（前端）+ appKey（后端）
+2. 控制台下载 ct4.js 自托管到 `ecs-frontend/public/ct4.js`，index.html 引入
+3. 前端 RegisterPage：`initAlicom4` 初始化，表单校验通过后 `showCaptcha()`，`onSuccess` 拿四要素（lot_number/captcha_output/pass_token/gen_time）随 register 提交
+4. 后端 `register`：HMAC-SHA256(appKey, lot_number) 签名后调二次校验接口，通过才继续短信核验 + 建号
 
 ## 6. 关键代码位置
 
 - 服务端配置：`index.js`（rateLimit / accountLockout / passwordPolicy）
-- 验证码与注册、直接建号拦截 `beforeSave('_User')`：`cloud/main.js`（v9 已移除 allowClientUserCreation）
-- 前端滑块 UI：`ecs-frontend/src/pages/RegisterPage/index.jsx`
+- 图形认证二次校验 + 短信核验 + 注册、直接建号拦截 `beforeSave('_User')`：`cloud/main.js`
+- 前端注册页（ct4.js 初始化 + 短信倒计时）：`ecs-frontend/src/pages/RegisterPage/index.jsx`
+- 图形认证 SDK 自托管：`ecs-frontend/public/ct4.js` + `index.html` 引入
 - 错误提示中文化：`ecs-frontend/src/lib/errorMsg.js`（Parse 内置英文文案 → 中文映射层，锁号时长从原文提取；服务端自定义文案已是中文直接透传）

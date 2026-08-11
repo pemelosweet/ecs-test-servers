@@ -9,6 +9,10 @@
     "dashboard": "open http://localhost:1337/dashboard"
   },
   "dependencies": {
+    "@alicloud/credentials": "^2.4.5",
+    "@alicloud/dypnsapi20170525": "^2.0.0",
+    "@alicloud/openapi-client": "^0.4.15",
+    "@alicloud/tea-util": "^1.4.11",
     "@parse/s3-files-adapter": "^5.3.1",
     "dotenv": "^17.4.2",
     "express": "^4.21.0",
