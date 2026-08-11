@@ -89,7 +89,7 @@
 - **背景**：初版为教学自研滑块（SVG 缺口图 + 前端拖拽），缺口坐标可被解析，挡不住会读图的定向攻击者；行内生产产品不用自研滑块
 - **候选**：阿里云验证码 2.0 / 极验 / 腾讯天御 / 阿里云号码认证服务-图形认证
 - **结论**：选**号码认证服务-图形认证**——与短信验证码同产品族，一个控制台一套账单；前端 ct4.js 自托管、后端一个 HTTP 验签接口，无额外 SDK 依赖
-- **临时停用（开关式，非删代码）**：前后端各有一个 `GRAPHIC_CAPTCHA_ENABLED` 开关（前端 `RegisterPage/index.jsx` + 后端 `cloud/main.js`），当前均为 `false`——注册跳过图形认证弹窗、服务端跳过二次校验，仅保留短信验证。恢复：两处开关同步置 `true` 即可，appId/appKey/ct4.js 均已就位无需重配
+- **临时停用（开关式，非删代码）**：前后端各有一个 `GRAPHIC_CAPTCHA_ENABLED` 开关（前端 `RegisterPage/index.jsx` + 后端 `cloud/aliyun-captcha.js`），当前均为 `false`——注册跳过图形认证弹窗、服务端跳过二次校验，仅保留短信验证。恢复：两处开关同步置 `true` 即可，appId/appKey/ct4.js 均已就位无需重配
 - **边界**：二次校验接口异常时按官方建议放行（不阻断业务）；ct4.js 需从控制台下载后自托管（public/ct4.js），不可本地魔改
 - **升级路径**：遭遇定向攻击时可同控制台切换验证形态（点选/九宫格），或升级阿里云验证码 2.0 无痕验证，架构不变
 
@@ -126,7 +126,7 @@
 ## 6. 关键代码位置
 
 - 服务端配置：`index.js`（rateLimit / accountLockout / passwordPolicy）
-- 图形认证二次校验 + 短信核验 + 注册、直接建号拦截 `beforeSave('_User')`：`cloud/main.js`
+- Cloud 入口（beforeSave 收口 + register/smsSend）：`cloud/main.js`；第三方集成抽离：`cloud/aliyun-sms.js`（短信发送/托管校验/错误码中文化）、`cloud/aliyun-captcha.js`（图形认证二次校验 + GRAPHIC_CAPTCHA_ENABLED 开关）
 - 前端注册页（ct4.js 初始化 + 短信倒计时）：`ecs-frontend/src/pages/RegisterPage/index.jsx`
 - 图形认证 SDK 自托管：`ecs-frontend/public/ct4.js` + `index.html` 引入
 - 错误提示中文化：`ecs-frontend/src/lib/errorMsg.js`（Parse 内置英文文案 → 中文映射层，锁号时长从原文提取；服务端自定义文案已是中文直接透传）
