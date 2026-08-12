@@ -1,8 +1,10 @@
 // Cloud Code 入口：beforeSave 触发器（数据校验 + 自动补字段）+ 注册/短信 Cloud 函数
 // 业务读写走 /classes REST 直连；注册走下方 register 函数（唯一建号入口）
 // 第三方集成已抽离：阿里云短信见 aliyun-sms.js，图形认证见 aliyun-captcha.js
+// 图床（OSS 签名直传）见 image-hosting.js
 const { sendSmsCode, verifySmsCode } = require('./aliyun-sms');
 const { GRAPHIC_CAPTCHA_ENABLED, verifyGraphicCaptcha } = require('./aliyun-captcha');
+require('./image-hosting');
 
 // Org 保存前：校验组织名称 + 自动记录作者
 Parse.Cloud.beforeSave('Org', (request) => {

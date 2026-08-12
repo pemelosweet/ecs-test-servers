@@ -4,6 +4,7 @@ module.exports = {
   APP_ID: process.env.PARSE_APP_ID || 'ecs-app',
   MASTER_KEY: process.env.PARSE_MASTER_KEY || 'ecs-master-key-dev',
   SERVER_URL: process.env.PARSE_SERVER_URL || 'http://localhost:1337/parse',
+  PUBLIC_SERVER_URL: process.env.PUBLIC_SERVER_URL || process.env.PARSE_SERVER_URL || 'http://localhost:1337/parse',
   DATABASE_URI: process.env.DATABASE_URI || 'mongodb://localhost:27017/ecs',
   PORT: parseInt(process.env.PORT, 10) || 1337,
   IS_PRODUCTION: process.env.NODE_ENV === 'production',
@@ -19,5 +20,16 @@ module.exports = {
     BUCKET_NAME: process.env.OSS_BUCKET_NAME,
     REGION: process.env.OSS_REGION,
     ENDPOINT: process.env.OSS_ENDPOINT,
+    // 图片对外访问地址：生产建议绑定自定义域名后填 https://img.xxx.com，
+    // 否则回退到 OSS 原生域名（默认域名对匿名请求可能强制下载，见 docs/image-hosting.md）
+    PUBLIC_URL: process.env.OSS_PUBLIC_URL,
+    // true = 直接返回 OSS/CDN 地址（需自定义域名可预览）；默认 false = 走 Parse /parse/files 代理取图（可预览）
+    DIRECT_ACCESS: process.env.OSS_DIRECT_ACCESS === 'true',
+  },
+
+  // 图床（服务端签名直传 OSS）
+  IMAGE_HOST: {
+    MAX_SIZE_MB: parseInt(process.env.IMAGE_HOST_MAX_SIZE_MB, 10) || 10,
+    KEY_PREFIX: process.env.IMAGE_HOST_KEY_PREFIX || 'images',
   },
 };

@@ -3,7 +3,7 @@
 const config = require('./config');
 
 function buildOssAdapter() {
-  const { ACCESS_KEY_ID, ACCESS_KEY_SECRET, BUCKET_NAME, REGION, ENDPOINT } = config.OSS;
+  const { ACCESS_KEY_ID, ACCESS_KEY_SECRET, BUCKET_NAME, REGION, ENDPOINT, PUBLIC_URL, DIRECT_ACCESS } = config.OSS;
   if (!BUCKET_NAME) return undefined;
 
   // 端点规范化：OSS 的 S3 兼容端点需带 s3. 前缀和 https 协议
@@ -30,11 +30,22 @@ function buildOssAdapter() {
       // OSS S3 兼容接口要求 virtual-hosted style（bucket.域名），不能用 path-style
       forcePathStyle: false,
     },
-    // 文件 URL 直接指向 OSS，不再走 Parse Server 转发
-    directAccess: true,
-    // 不设置 baseUrl 时适配器会硬编码 AWS 域名，这里指向 OSS 的 virtual-hosted 地址
-    baseUrl: `https://${BUCKET_NAME}.s3.oss-${region}.aliyuncs.com`,
+    // 上传始终走 S3 兼容端点（endpoint）；对外访问 URL 二选一：
+    // - 直连模式（默认）：返回 OSS/CDN 地址，需绑定自定义域名才能避免强制下载
+    // - 代理模式（OSS_DIRECT_ACCESS=false）：走 Parse /parse/files 端点取图，浏览器可预览
+    directAccess: DIRECT_ACCESS,
+    baseUrl: buildPublicBaseUrl(),
   });
+}
+
+// 对外文件 URL：优先自定义域名（如 https://img.xmg111.xyz），否则用 OSS 原生域名
+function buildPublicBaseUrl() {
+  const { BUCKET_NAME, REGION, ENDPOINT, PUBLIC_URL } = config.OSS;
+  if (PUBLIC_URL) return PUBLIC_URL.replace(/\/+$/, '');
+  const nativeHost = ENDPOINT
+    ? ENDPOINT.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+    : `oss-${REGION || 'cn-beijing'}.aliyuncs.com`;
+  return `https://${BUCKET_NAME}.${nativeHost}`;
 }
 
 module.exports = buildOssAdapter;

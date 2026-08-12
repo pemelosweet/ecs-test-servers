@@ -11,6 +11,15 @@ const CLPS = {
   delete: { requiresAuthentication: true },
 };
 
+// ImageAsset 只允许服务端登记（Cloud 函数带 master key），客户端不可直接写
+const IMAGE_ASSET_CLPS = {
+  find: { '*': true },
+  get: { '*': true },
+  create: {},
+  update: {},
+  delete: {},
+};
+
 // 表结构定义：字段名 → 类型（required 表示必填）
 const SCHEMAS = {
   Org: {
@@ -42,6 +51,19 @@ const SCHEMAS = {
     socialLinks: { type: 'Object' },
     interests: { type: 'Array' },
   },
+  ImageAsset: {
+    key: { type: 'String', required: true },
+    url: { type: 'String', required: true },
+    mime: { type: 'String' },
+    size: { type: 'Number' },
+    name: { type: 'String' },
+    width: { type: 'Number' },
+    height: { type: 'Number' },
+  },
+};
+
+const SCHEMA_CLPS = {
+  ImageAsset: IMAGE_ASSET_CLPS,
 };
 
 // 按定义构建 Parse.Schema（含 author 指针字段和 CLP）
@@ -67,7 +89,7 @@ function buildSchema(className, fields) {
 
   // 提交人：指向 _User，由 beforeSave 自动填充
   schema.addPointer('author', '_User');
-  schema.setCLP(CLPS);
+  schema.setCLP(SCHEMA_CLPS[className] || CLPS);
   return schema;
 }
 
