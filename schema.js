@@ -80,6 +80,8 @@ function buildSchema(className, fields) {
       schema.addObject(name);
     } else if (def.type === 'Boolean') {
       schema.addBoolean(name, def.defaultValue);
+    } else if (def.type === 'Number') {
+      schema.addNumber(name);
     } else if (def.type === 'Pointer') {
       schema.addPointer(name, def.targetClass);
     } else {
