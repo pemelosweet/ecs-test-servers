@@ -1,5 +1,5 @@
 // 环境变量与默认值（所有配置的唯一出口）
-module.exports = {
+const config = {
   // Parse Server 基础配置
   APP_ID: process.env.PARSE_APP_ID || 'ecs-app',
   MASTER_KEY: process.env.PARSE_MASTER_KEY || 'ecs-master-key-dev',
@@ -33,3 +33,10 @@ module.exports = {
     KEY_PREFIX: process.env.IMAGE_HOST_KEY_PREFIX || 'images',
   },
 };
+
+// 启动自检：生产的对外地址绝不能是本地回环，防本地 .env 误抄进 PROD_ENV 的事故
+if (config.IS_PRODUCTION && /localhost|127\.0\.0\.1/.test(config.PUBLIC_SERVER_URL)) {
+  console.error('[config] PUBLIC_SERVER_URL 仍是本地地址，请在 PROD_ENV secret 配置对外域名（见 deploy/DEPLOY.md）');
+}
+
+module.exports = config;
