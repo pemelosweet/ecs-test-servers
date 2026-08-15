@@ -100,4 +100,34 @@ async function verifySmsCode(phone, smsCode) {
   }
 }
 
-module.exports = { sendSmsCode, verifySmsCode };
+// 手机号格式（中国大陆 11 位）
+const PHONE_RE = /^1\d{10}$/;
+
+// ---------- 业务流控：同号码天级发送上限 ----------
+// 内存记录，重启清零；各短信入口（注册 smsSend / 重置密码）共用，防交替调用绕过
+const smsDailyCount = new Map(); // phone -> { day, count }
+const SMS_DAILY_LIMIT = 10;
+
+// 超限抛错（发送前调用）
+function assertSmsDailyLimit(phone) {
+  const day = new Date().toISOString().slice(0, 10);
+  const rec = smsDailyCount.get(phone);
+  if (rec && rec.day === day && rec.count >= SMS_DAILY_LIMIT) {
+    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '该号码今日发送次数已达上限，请明天再试');
+  }
+}
+
+// 发送成功后计数（叠加阿里云自身流控）
+function bumpSmsDailyCount(phone) {
+  const day = new Date().toISOString().slice(0, 10);
+  const rec = smsDailyCount.get(phone);
+  smsDailyCount.set(phone, { day, count: rec && rec.day === day ? rec.count + 1 : 1 });
+}
+
+module.exports = {
+  sendSmsCode,
+  verifySmsCode,
+  PHONE_RE,
+  assertSmsDailyLimit,
+  bumpSmsDailyCount,
+};

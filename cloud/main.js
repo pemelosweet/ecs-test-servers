@@ -2,9 +2,16 @@
 // 业务读写走 /classes REST 直连；注册走下方 register 函数（唯一建号入口）
 // 第三方集成已抽离：阿里云短信见 aliyun-sms.js，图形认证见 aliyun-captcha.js
 // 图床（OSS 签名直传）见 image-hosting.js
-const { sendSmsCode, verifySmsCode } = require('./aliyun-sms');
+const {
+  sendSmsCode,
+  verifySmsCode,
+  PHONE_RE,
+  assertSmsDailyLimit,
+  bumpSmsDailyCount,
+} = require('./aliyun-sms');
 const { GRAPHIC_CAPTCHA_ENABLED, verifyGraphicCaptcha } = require('./aliyun-captcha');
 require('./image-hosting');
+require('./password-reset');
 
 // Org 保存前：校验组织名称 + 自动记录作者
 Parse.Cloud.beforeSave('Org', (request) => {
@@ -46,29 +53,19 @@ Parse.Cloud.beforeSave('_User', (request) => {
   }
 });
 
-// ---------- 短信验证码业务流控 ----------
-const PHONE_RE = /^1\d{10}$/;
+// ---------- 短信验证码业务入口 ----------
+// 手机号校验与天级限流下沉到 aliyun-sms.js，注册与重置密码共享同一限额
 
-// 同号码天级发送上限（叠加阿里云自身流控，防换号轰炸）；内存记录，重启清零
-const smsDailyCount = new Map(); // phone -> { day, count }
-const SMS_DAILY_LIMIT = 10;
-
-// 发送短信验证码
+// 发送短信验证码（注册流程）
 Parse.Cloud.define('smsSend', async (request) => {
   const { phone } = request.params;
   if (!PHONE_RE.test(phone || '')) {
     throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '手机号格式错误');
   }
 
-  const day = new Date().toISOString().slice(0, 10);
-  const rec = smsDailyCount.get(phone);
-  if (rec && rec.day === day && rec.count >= SMS_DAILY_LIMIT) {
-    throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '该号码今日发送次数已达上限，请明天再试');
-  }
-
+  assertSmsDailyLimit(phone);
   await sendSmsCode(phone);
-
-  smsDailyCount.set(phone, { day, count: rec && rec.day === day ? rec.count + 1 : 1 });
+  bumpSmsDailyCount(phone);
   return { ok: true };
 });
 
