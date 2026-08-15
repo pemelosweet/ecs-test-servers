@@ -5,6 +5,7 @@
 const Dypnsapi20170525 = require('@alicloud/dypnsapi20170525');
 const OpenApi = require('@alicloud/openapi-client');
 const Util = require('@alicloud/tea-util');
+const config = require('../config');
 
 // SDK 主类挂在 .default 上（官方示例同款写法），请求类是命名导出
 const DypnsClient = Dypnsapi20170525.default;
@@ -12,8 +13,8 @@ const DypnsClient = Dypnsapi20170525.default;
 let _smsClient = null;
 function getSmsClient() {
   if (!_smsClient) {
-    const { ALIBABA_CLOUD_ACCESS_KEY_ID, ALIBABA_CLOUD_ACCESS_KEY_SECRET } = process.env;
-    if (!ALIBABA_CLOUD_ACCESS_KEY_ID || !ALIBABA_CLOUD_ACCESS_KEY_SECRET) {
+    const { ACCESS_KEY_ID, ACCESS_KEY_SECRET, ENDPOINT } = config.SMS;
+    if (!ACCESS_KEY_ID || !ACCESS_KEY_SECRET) {
       throw new Parse.Error(
         Parse.Error.VALIDATION_ERROR,
         '短信服务未配置：.env 缺少 ALIBABA_CLOUD_ACCESS_KEY_ID / ALIBABA_CLOUD_ACCESS_KEY_SECRET'
@@ -21,9 +22,9 @@ function getSmsClient() {
     }
     _smsClient = new DypnsClient(
       new OpenApi.Config({
-        accessKeyId: ALIBABA_CLOUD_ACCESS_KEY_ID,
-        accessKeySecret: ALIBABA_CLOUD_ACCESS_KEY_SECRET,
-        endpoint: 'dypnsapi.aliyuncs.com',
+        accessKeyId: ACCESS_KEY_ID,
+        accessKeySecret: ACCESS_KEY_SECRET,
+        endpoint: ENDPOINT,
       })
     );
   }
@@ -59,8 +60,8 @@ function translateSmsError(err) {
 async function sendSmsCode(phone) {
   const params = {
     phoneNumber: phone,
-    signName: process.env.SMS_SIGN_NAME,
-    templateCode: process.env.SMS_TEMPLATE_CODE,
+    signName: config.SMS.SIGN_NAME,
+    templateCode: config.SMS.TEMPLATE_CODE,
     // ##code## = 由阿里云生成验证码，后续可用 CheckSmsVerifyCode 托管校验
     templateParam: JSON.stringify({ code: '##code##', min: '5' }),
     codeLength: 6,
@@ -69,7 +70,7 @@ async function sendSmsCode(phone) {
     interval: 60, // 同号码 60 秒内只能发一次
     duplicatePolicy: 1, // 重发时旧码失效
   };
-  if (process.env.SMS_SCHEME_NAME) params.schemeName = process.env.SMS_SCHEME_NAME;
+  if (config.SMS.SCHEME_NAME) params.schemeName = config.SMS.SCHEME_NAME;
 
   try {
     const resp = await getSmsClient().sendSmsVerifyCodeWithOptions(
@@ -87,7 +88,7 @@ async function sendSmsCode(phone) {
 // 阿里云托管校验短信验证码（仅 ##code## 方式可用）
 async function verifySmsCode(phone, smsCode) {
   const params = { phoneNumber: phone, verifyCode: smsCode };
-  if (process.env.SMS_SCHEME_NAME) params.schemeName = process.env.SMS_SCHEME_NAME;
+  if (config.SMS.SCHEME_NAME) params.schemeName = config.SMS.SCHEME_NAME;
   try {
     const resp = await getSmsClient().checkSmsVerifyCodeWithOptions(
       new Dypnsapi20170525.CheckSmsVerifyCodeRequest(params),

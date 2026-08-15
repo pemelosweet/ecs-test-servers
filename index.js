@@ -21,8 +21,8 @@ const parseServer = new ParseServer({
   appId: config.APP_ID,
   masterKey: config.MASTER_KEY,
   serverURL: config.SERVER_URL,
-  // 对外地址：文件（头像）URL 依赖它拼接，缺失会得到 undefined/files/...
-  publicServerURL: process.env.PUBLIC_SERVER_URL || config.SERVER_URL,
+  // 对外地址：文件（头像）URL 依赖它拼接，统一走 config 推导（开发回环 / 生产域名）
+  publicServerURL: config.PUBLIC_SERVER_URL,
   cloud: __dirname + '/cloud/main.js',
   // 允许不带 masterKey 直接创建新 class（仅限开发环境）
   allowClientClassCreation: !config.IS_PRODUCTION,

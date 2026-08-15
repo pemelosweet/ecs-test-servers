@@ -9,8 +9,9 @@ const {
   assertSmsDailyLimit,
   bumpSmsDailyCount,
 } = require('./aliyun-sms');
-const { GRAPHIC_CAPTCHA_ENABLED, verifyGraphicCaptcha } = require('./aliyun-captcha');
+const { verifyGraphicCaptcha } = require('./aliyun-captcha');
 const { ROLE_USER, STATUS_ACTIVE, STATUS_DISABLED } = require('./admin-constants');
+const { CAPTCHA } = require('../config');
 require('./image-hosting');
 require('./password-reset');
 require('./admin');
@@ -101,9 +102,9 @@ Parse.Cloud.define('register', async (request) => {
     gen_time,
   } = request.params;
 
-  // 图形认证服务端二次校验（GRAPHIC_CAPTCHA_ENABLED=false 时跳过）
+  // 图形认证服务端二次校验（config.CAPTCHA.ENABLED=false 时跳过）
   if (
-    GRAPHIC_CAPTCHA_ENABLED &&
+    CAPTCHA.ENABLED &&
     !(await verifyGraphicCaptcha({ lot_number, captcha_output, pass_token, gen_time }))
   ) {
     throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '人机验证失败，请重试');

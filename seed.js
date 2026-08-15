@@ -23,15 +23,14 @@ async function seed() {
   Parse.serverURL = config.SERVER_URL;
 
   // ---------- 1. 默认管理员 ----------
-  // 默认管理员用户名：xmg001（可用 ADMIN_INIT_USERNAME 覆盖）
-  const adminUsername = process.env.ADMIN_INIT_USERNAME || 'xmg001';
+  // 默认管理员用户名/密码见 config.ADMIN（可用 ADMIN_INIT_USERNAME / ADMIN_INIT_PASSWORD 环境变量覆盖）
+  const { INIT_USERNAME: adminUsername, INIT_PASSWORD: password } = config.ADMIN;
   const adminQuery = new Parse.Query(Parse.User);
   adminQuery.equalTo('username', adminUsername);
   let adminUser = await adminQuery.first({ useMasterKey: true });
 
   if (!adminUser) {
-    // 不存在该用户：创建为管理员（密码来自 ADMIN_INIT_PASSWORD）
-    const password = process.env.ADMIN_INIT_PASSWORD || 'admin123456';
+    // 不存在该用户：创建为管理员
     const user = new Parse.User();
     user.set('username', adminUsername);
     user.set('password', password);
