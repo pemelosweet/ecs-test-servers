@@ -1,13 +1,21 @@
 // 环境变量与默认值（所有配置的唯一出口）
+const PORT = parseInt(process.env.PORT, 10) || 1337;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
 const config = {
   // Parse Server 基础配置
   APP_ID: process.env.PARSE_APP_ID || 'ecs-app',
   MASTER_KEY: process.env.PARSE_MASTER_KEY || 'ecs-master-key-dev',
-  SERVER_URL: process.env.PARSE_SERVER_URL || 'http://localhost:1337/parse',
-  PUBLIC_SERVER_URL: process.env.PUBLIC_SERVER_URL || process.env.PARSE_SERVER_URL || 'http://localhost:1337/parse',
+  SERVER_URL: process.env.PARSE_SERVER_URL || `http://localhost:${PORT}/parse`,
+  // 对外地址默认按环境推导：生产走项目常量域名（与 nginx/DEPLOY.md 一致），开发走回环；
+  // 仍可用环境变量覆盖。由此本地 .env 与 PROD_ENV 内容可保持完全一致，
+  // 根除 secret 全量替换时对外地址误配的事故
+  PUBLIC_SERVER_URL:
+    process.env.PUBLIC_SERVER_URL ||
+    (IS_PRODUCTION ? 'https://admin.xmg111.xyz/parse' : `http://localhost:${PORT}/parse`),
   DATABASE_URI: process.env.DATABASE_URI || 'mongodb://localhost:27017/ecs',
-  PORT: parseInt(process.env.PORT, 10) || 1337,
-  IS_PRODUCTION: process.env.NODE_ENV === 'production',
+  PORT,
+  IS_PRODUCTION,
 
   // Dashboard 账号
   DASHBOARD_USER: process.env.PARSE_DASHBOARD_USER ,

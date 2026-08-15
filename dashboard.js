@@ -6,8 +6,8 @@ module.exports = new ParseDashboard(
   {
     apps: [
       {
-        // 看板由浏览器直连 serverURL，必须用对外可达地址（PUBLIC_SERVER_URL），而非服务端内部地址
-        serverURL: process.env.PUBLIC_SERVER_URL || config.SERVER_URL,
+        // 看板由浏览器直连 serverURL，必须用对外可达地址（config 已按环境推导），而非服务端内部地址
+        serverURL: config.PUBLIC_SERVER_URL,
         appId: config.APP_ID,
         masterKey: config.MASTER_KEY,
         appName: 'ECS Backend',
