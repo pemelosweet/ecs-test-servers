@@ -4,7 +4,7 @@
 链接远程 ssh root@8.210.108.71
 ## 1. 需求
 
-push 代码到 GitHub 后，ECS 生产环境自动完成：拉代码 → 构建前端 → 同步产物 → 重启后端（即 `deploy/update.sh` 的全流程）。
+push 代码到 GitHub 后，ECS 生产环境自动完成：拉代码 → 构建前端 → 同步产物 → 重启后端（即 `ecs-infra/scripts/update.sh` 的全流程）。
 
 ## 2. 三种候选方案对比
 
@@ -55,7 +55,7 @@ ECS 每分钟 git ls-remote 对比 → 有新提交就跑 update.sh
 push ecs-frontend ───────────────┐
 push ecs-test-servers ──dispatch─┼─→ ecs-frontend/.github/workflows/deploy.yml
 push ecs-blog ──────────dispatch─┘        │ runs-on: self-hosted
-                                          └─→ bash /opt/xmg/ecs-frontend/deploy/update.sh
+                                          └─→ bash /opt/xmg/ecs-infra/scripts/update.sh
 ```
 
 - `ecs-frontend/.github/workflows/deploy.yml`：监听 push + `repository_dispatch`，在自托管 runner 上跑 update.sh；`concurrency` 保证同一时间只有一个部署任务
@@ -95,11 +95,11 @@ curl -X POST -H "Authorization: token <PAT>" \
 
 ## 8. 端到端搭建清单（从零重跑）
 
-按顺序执行，细节见前文各节与 `ecs-frontend/deploy/DEPLOY.md`：
+按顺序执行，细节见前文各节与 `ecs-infra/docs/DEPLOY.md`：
 
 1. **ECS 基础环境**：Node 24 + pm2 + MongoDB + nginx（DEPLOY.md 第 1~4 节）
-2. **后端配置**：填 `/opt/xmg/ecs-test-servers/.env` 真实值，`grep -c 'your-' .env` 必须为 0；`pm2 start ecosystem.config.js && pm2 save`
-3. **前端首部署**：`bash /opt/xmg/ecs-frontend/deploy/update.sh`（首次手动跑一次，之后全自动）
+2. **后端配置**：填 `/opt/xmg/ecs-test-servers/.env` 真实值，`grep -c 'your-' .env` 必须为 0；`pm2 start /opt/xmg/ecs-infra/pm2/ecosystem.config.js && pm2 save`
+3. **前端首部署**：`bash /opt/xmg/ecs-infra/scripts/update.sh`（首次手动跑一次，之后全自动）
 4. **创建 PAT**：GitHub → Developer settings → Personal access tokens → Tokens (classic)，只勾 `repo`，生成后立即复制
 5. **配 Secrets**：ecs-test-servers 与 ecs-blog 两个仓库各加 `DEPLOY_PAT`（ecs-frontend 不需要）
 6. **装 runner**：ecs-frontend → Settings → Actions → Runners → New self-hosted runner，在 ECS 执行页面给出的命令；root 用户需 `RUNNER_ALLOW_RUNASROOT=1`（写入 runner 目录 `.env` 持久化）；最后 `./svc.sh install root && ./svc.sh start`，页面状态变绿 Idle
