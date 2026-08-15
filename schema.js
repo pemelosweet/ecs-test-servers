@@ -60,10 +60,31 @@ const SCHEMAS = {
     width: { type: 'Number' },
     height: { type: 'Number' },
   },
+  // 菜单权限：每角色一行（role → 可访问菜单 key 列表），读写都走 Cloud 函数（master key）
+  MenuPermission: {
+    role: { type: 'String', required: true },
+    menus: { type: 'Array' },
+  },
+};
+
+// MenuPermission 客户端不可直读写（权限变更必须走管理员 Cloud 函数）
+const MENU_PERMISSION_CLPS = {
+  find: {},
+  get: {},
+  create: {},
+  update: {},
+  delete: {},
 };
 
 const SCHEMA_CLPS = {
   ImageAsset: IMAGE_ASSET_CLPS,
+  MenuPermission: MENU_PERMISSION_CLPS,
+};
+
+// _User 扩展字段：角色 + 状态（由 schema 同步保证字段存在）
+const USER_EXTRA_FIELDS = {
+  role: { type: 'String' },
+  status: { type: 'String' },
 };
 
 // 按定义构建 Parse.Schema（含 author 指针字段和 CLP）
@@ -122,6 +143,18 @@ async function initSchema() {
         console.error(`Schema "${className}" error:`, err.message);
       }
     }
+  }
+
+  // 同步 _User 扩展字段（角色 + 状态），已存在则 update
+  try {
+    const userSchema = new Parse.Schema('_User');
+    for (const [name, def] of Object.entries(USER_EXTRA_FIELDS)) {
+      userSchema.addString(name, def.required);
+    }
+    await userSchema.update();
+    console.log('Schema "_User" extra fields synced');
+  } catch (err) {
+    console.error('Schema "_User" extra fields error:', err.message);
   }
 }
 

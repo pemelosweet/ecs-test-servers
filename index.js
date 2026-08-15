@@ -12,6 +12,7 @@ const config = require('./config');
 const buildOssAdapter = require('./oss');
 const dashboard = require('./dashboard');
 const initSchema = require('./schema');
+const seed = require('./seed');
 
 // ---------- Parse Server 实例 ----------
 const ossAdapter = buildOssAdapter();
@@ -47,6 +48,24 @@ const parseServer = new ParseServer({
       requestCount: 5,
       errorResponseMessage: '短信发送过于频繁，请稍后再试',
     },
+    {
+      requestPath: '/functions/imageHostUploadTicket',
+      requestTimeWindow: 60000,
+      requestCount: 30,
+      errorResponseMessage: '上传请求过于频繁，请稍后再试',
+    },
+    {
+      requestPath: '/functions/imageHostRegister',
+      requestTimeWindow: 60000,
+      requestCount: 30,
+      errorResponseMessage: '上传请求过于频繁，请稍后再试',
+    },
+    {
+      requestPath: '/functions/imageHostDelete',
+      requestTimeWindow: 60000,
+      requestCount: 60,
+      errorResponseMessage: '操作过于频繁，请稍后再试',
+    },
   ],
   // 账户锁：连续输错 5 次锁 15 分钟（挡低频字典攻击）
   accountLockout: { duration: 15, threshold: 5 },
@@ -78,4 +97,6 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' })); // 健康检查
 
   // 启动时自动创建 Schema（幂等）
   await initSchema();
+  // 初始化种子数据：默认管理员 + 默认菜单权限（幂等）
+  await seed();
 })();

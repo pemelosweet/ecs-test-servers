@@ -10,8 +10,10 @@ const {
   bumpSmsDailyCount,
 } = require('./aliyun-sms');
 const { GRAPHIC_CAPTCHA_ENABLED, verifyGraphicCaptcha } = require('./aliyun-captcha');
+const { ROLE_USER, STATUS_ACTIVE, STATUS_DISABLED } = require('./admin-constants');
 require('./image-hosting');
 require('./password-reset');
+require('./admin');
 
 // Org 保存前：校验组织名称 + 自动记录作者
 Parse.Cloud.beforeSave('Org', (request) => {
@@ -45,11 +47,27 @@ Parse.Cloud.beforeSave('Profile', (request) => {
 // v9 已移除 allowClientUserCreation：用 beforeSave 拦截非 master key 的新建用户，
 // 唯一建号入口 = register 函数（master key + 安全验证）
 Parse.Cloud.beforeSave('_User', (request) => {
-  if (request.object.isNew() && !request.master) {
+  const user = request.object;
+
+  if (user.isNew() && !request.master) {
     throw new Parse.Error(
       Parse.Error.OPERATION_FORBIDDEN,
       '直接注册已关闭，请使用带安全验证的注册入口'
     );
+  }
+
+  // 新建用户默认角色/状态（管理员由 seed 创建时显式指定，不走默认覆盖）
+  if (user.isNew()) {
+    if (!user.get('role')) user.set('role', ROLE_USER);
+    if (!user.get('status')) user.set('status', STATUS_ACTIVE);
+  }
+});
+
+// ---------- 登录拦截：禁用账号禁止登录 ----------
+Parse.Cloud.beforeLogin(async (request) => {
+  const user = request.object;
+  if (user && user.get('status') === STATUS_DISABLED) {
+    throw new Parse.Error(Parse.Error.OBJECT_NOT_FOUND, '账号已被禁用，请联系管理员');
   }
 });
 
@@ -108,6 +126,9 @@ Parse.Cloud.define('register', async (request) => {
   user.set('password', password);
   user.set('phone', phone);
   if (email) user.set('email', email);
+  // 默认普通用户 + 正常状态（beforeSave 也会兜底）
+  user.set('role', ROLE_USER);
+  user.set('status', STATUS_ACTIVE);
   await user.signUp(null, { useMasterKey: true });
   return { ok: true };
 });
