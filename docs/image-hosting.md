@@ -49,23 +49,46 @@ flowchart LR
 
 | 函数 | 入参 | 说明 |
 | --- | --- | --- |
-| `imageHostUploadTicket` | `contentType` | 需登录；返回 key / policy / signature / uploadUrl / token，5 分钟有效 |
-| `imageHostRegister` | `key`, `token` | 需登录；HEAD 校验对象后写入 `ImageAsset`，token 一次性使用 |
-| `imageHostList` | `limit`, `skip`（可选） | 图片列表，按创建时间倒序，默认 20 条 |
+| `imageHostUploadTicket` | `contentType` | 需登录；每日配额校验；返回 key / policy / signature / uploadUrl / token / maxSize / allowedTypes，5 分钟有效 |
+| `imageHostRegister` | `key`, `token` | 需登录；HEAD 校验对象 + **魔数校验**后写入 `ImageAsset`，token 一次性使用 |
+| `imageHostList` | `limit`, `skip`（可选） | 需登录；图片列表倒序分页，返回 `total` 与当日 `quota` |
 | `imageHostDelete` | `id` | 需登录；仅作者可删，OSS 对象与记录同步删除 |
 
 > 注意：Parse Server 的 Cloud 函数名不能带点号（如 `imageHost.uploadTicket` 会注册失败），图床函数统一使用平铺驼峰命名。
 
 `ImageAsset` 表：`key`、`url`、`mime`、`size`、`author`（指向 `_User`）。读公开，写仅允许服务端 master key，客户端不能伪造记录。
 
+### 4.1 每日配额
+
+- 普通用户每日最多上传 **5 张**（`image-hosting.js` 的 `DAILY_UPLOAD_LIMIT`），按服务器本地自然日统计（以 `ImageAsset` 记录数为准，未登记的票据不算）。
+- 在 `imageHostUploadTicket`（未上传前拦截）与 `imageHostRegister`（防并发绕过）双重校验；超限提示「今日上传已达上限（5 张），请明天再试」。
+- 列表接口返回 `quota: { used, limit }`，页面顶部展示「今日已上传 x/5 张」。
+
 ## 5. 安全设计
 
 - **服务端签名直传**：浏览器只拿短时效 policy，拿不到 AccessKey Secret；policy 将 `key`、`content-type`、`content-disposition`、`cache-control`、大小区间全部钉死。
 - **不可预测 key**：`images/yyyy/MM/dd/<uuid>.<ext>`，服务端生成，杜绝路径穿越、覆盖、遍历。
 - **类型白名单**：仅 JPG / PNG / WebP / GIF；register 阶段再次 HEAD 校验，防止绕过 policy 直传任意文件。
+- **魔数校验**：register 时 Range GET 对象前 12 字节，校验与声明类型一致的 JPEG/PNG/GIF/WebP 签名，杜绝「声明合法 content-type 直传任意内容」的伪图片。
 - **一次性票据**：token 绑定用户、key 和有效期，用完即销毁。
 - **按作者删除**：只能删除自己上传的图片。
 - **访问控制**：bucket 为 public-read（公开图床）；如后续有私密图片，改用私桶 + 签名 URL 或 CDN 鉴权。
+- **限流**：图床函数接入 `index.js` 的 rateLimit（上传 30 次/分、删除 60 次/分，按 IP）。
+
+## 6. 前端压缩（方案 A：canvas 重编码）
+
+上传链路不变（浏览器直传 OSS），压缩发生在 `beforeUpload` 阶段（`ecs-frontend/src/lib/imageCompress.js`）：
+
+| 输入 | 处理 |
+| --- | --- |
+| GIF（动画） | 原样直传，不做 canvas 处理（会变静态图） |
+| JPEG | canvas 重编码 JPEG，质量 0.82 |
+| PNG / WebP | 优先转 WebP（保留透明通道）；浏览器不支持 WebP 时回退原格式；转 JPEG 时透明区域填白底 |
+| 任意类型 | 未超最长边 2048px 且目标格式不变 → 直接用原文件，避免无谓重编码 |
+
+- 压缩异常一律回退原文件，不阻断上传；原始文件超过 30MB 直接拒绝。
+- 类型白名单与大小上限由服务端 `imageHostUploadTicket` 下发（`allowedTypes` / `maxSize`），前端不再硬编码（单一事实源）。
+- 上传成功、删除、分页等均复用统一 `loadImages`（DRY）；拖拽多文件由上传锁（`uploadingRef`）防并发。
 
 ## 6. 部署配置
 

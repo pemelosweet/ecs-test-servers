@@ -9,6 +9,38 @@ const ALLOWED_IMAGE_TYPES = {
   'image/gif': 'gif',
 };
 
+// 图片魔数签名（文件真实内容校验，防“声明合法 content-type 直传任意内容”）
+// null 表示该位置任意字节（WebP 的 RIFF size 字段）
+const MAGIC_BYTES = {
+  'image/jpeg': [[0xff, 0xd8, 0xff]],
+  'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
+  'image/gif': [
+    [0x47, 0x49, 0x46, 0x38, 0x37, 0x61],
+    [0x47, 0x49, 0x46, 0x38, 0x39, 0x61],
+  ],
+  'image/webp': [
+    [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x45, 0x42, 0x50],
+  ],
+};
+
+// 校验对象前若干字节是否与声明 mime 的魔数匹配
+function validateImageMagic(buffer, mime) {
+  const candidates = MAGIC_BYTES[mime] || [];
+  if (!candidates.length) return false;
+  for (const magic of candidates) {
+    if (magic.length > buffer.length) continue;
+    let ok = true;
+    for (let i = 0; i < magic.length; i++) {
+      if (magic[i] !== null && buffer[i] !== magic[i]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
 const INLINE_DISPOSITION = 'inline';
 const PUBLIC_CACHE_CONTROL = 'public,max-age=31536000,immutable';
 
@@ -91,6 +123,21 @@ async function headObject(oss, key) {
   };
 }
 
+// 读取对象指定字节区间（Range GET，注册时校验魔数用）
+async function fetchObjectRange(oss, key, start, end) {
+  const host = normalizeHost(oss);
+  const date = new Date().toUTCString();
+  const resource = `/${oss.BUCKET_NAME}/${key}`;
+  const res = await fetch(`https://${host}/${encodeURIComponent(key)}`, {
+    method: 'GET',
+    headers: { Date: date, Authorization: authHeader(oss, 'GET', date, resource), Range: `bytes=${start}-${end}` },
+  });
+  if (!res.ok) {
+    throw new Error(`OSS object read failed: HTTP ${res.status}`);
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
 // 删除对象（404 视为已删除，幂等）
 async function deleteObject(oss, key) {
   const host = normalizeHost(oss);
@@ -116,5 +163,7 @@ module.exports = {
   buildPolicy,
   signPolicy,
   headObject,
+  fetchObjectRange,
+  validateImageMagic,
   deleteObject,
 };

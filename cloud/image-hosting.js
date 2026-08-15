@@ -12,11 +12,15 @@ const {
   buildPolicy,
   signPolicy,
   headObject,
+  fetchObjectRange,
+  validateImageMagic,
   deleteObject,
 } = require('./oss-sign');
 
 const MAX_SIZE_BYTES = config.IMAGE_HOST.MAX_SIZE_MB * 1024 * 1024;
 const TICKET_TTL_MS = 5 * 60 * 1000;
+// 普通用户每日上传配额（张），按服务器本地自然日统计
+const DAILY_UPLOAD_LIMIT = 5;
 
 // 一次性上传票据：token -> { key, userId, expiresAt }（内存态，重启即失效，够用）
 const pendingUploads = new Map();
@@ -26,6 +30,32 @@ function assertConfigured() {
   if (!BUCKET_NAME || !ACCESS_KEY_ID || !ACCESS_KEY_SECRET) {
     throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '图床未配置：请填写 OSS 相关环境变量');
   }
+}
+
+// 今日 0 点（服务器本地自然日）
+function todayStart() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+// 统计某用户今日已上传张数（以 ImageAsset 记录为准，未登记的票据不算）
+async function countTodayUploads(userId) {
+  const query = new Parse.Query('ImageAsset');
+  query.equalTo('author', { __type: 'Pointer', className: '_User', objectId: userId });
+  query.greaterThanOrEqualTo('createdAt', todayStart());
+  return query.count({ useMasterKey: true });
+}
+
+// 配额校验：超限抛业务错误
+async function assertDailyQuota(userId) {
+  const used = await countTodayUploads(userId);
+  if (used >= DAILY_UPLOAD_LIMIT) {
+    throw new Parse.Error(
+      Parse.Error.OPERATION_FORBIDDEN,
+      `今日上传已达上限（${DAILY_UPLOAD_LIMIT} 张），请明天再试`
+    );
+  }
+  return used;
 }
 
 function cleanupExpiredTickets() {
@@ -87,6 +117,9 @@ Parse.Cloud.define(
   'imageHostUploadTicket',
   async (request) => {
     assertConfigured();
+    // 配额校验（未上传前拦截，最省流量）
+    await assertDailyQuota(request.user.id);
+
     const contentType = String(request.params.contentType || '').split(';')[0].trim();
     if (!ALLOWED_IMAGE_TYPES[contentType]) {
       throw new Parse.Error(
@@ -116,13 +149,16 @@ Parse.Cloud.define(
       cacheControl: PUBLIC_CACHE_CONTROL,
       url: buildPublicFileUrl(key),
       maxSize: MAX_SIZE_BYTES,
+      // 下发白名单与上限，前端用服务端值校验（单一事实源，不再硬编码）
+      allowedTypes: Object.keys(ALLOWED_IMAGE_TYPES),
+      quota: { limit: DAILY_UPLOAD_LIMIT },
       expiresAt: expiresAt.toISOString(),
     };
   },
   { requireUser: true }
 );
 
-// 2. 直传完成后登记：校验对象元数据，写 ImageAsset
+// 2. 直传完成后登记：校验对象元数据 + 魔数，写 ImageAsset
 Parse.Cloud.define(
   'imageHostRegister',
   async (request) => {
@@ -133,6 +169,9 @@ Parse.Cloud.define(
     }
     consumeTicket(token, key, request.user.id);
 
+    // 配额二次校验（防并发绕过 ticket 阶段检查）
+    await assertDailyQuota(request.user.id);
+
     const head = await headObject(config.OSS, key);
     if (!ALLOWED_IMAGE_TYPES[head.contentType]) {
       throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '对象类型不在图床白名单内');
@@ -142,6 +181,16 @@ Parse.Cloud.define(
     }
     if (head.contentLength > MAX_SIZE_BYTES) {
       throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '图片超过大小上限');
+    }
+    // 魔数校验：真实内容必须与声明的图片类型一致（防伪图片混入）
+    try {
+      const headBytes = await fetchObjectRange(config.OSS, key, 0, 15);
+      if (!validateImageMagic(headBytes, head.contentType)) {
+        throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '图片内容校验失败，请重新上传');
+      }
+    } catch (err) {
+      if (err instanceof Parse.Error) throw err;
+      throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '图片内容校验失败，请稍后重试');
     }
 
     const existing = await new Parse.Query('ImageAsset')
@@ -169,31 +218,40 @@ Parse.Cloud.define(
   { requireUser: true }
 );
 
-// 3. 图床列表（倒序分页 + 名称/日期过滤，total 供前端分页组件）
-Parse.Cloud.define('imageHostList', async (request) => {
-  const limit = Math.min(Math.max(parseInt(request.params?.limit, 10) || 20, 1), 100);
-  const skip = Math.max(parseInt(request.params?.skip, 10) || 0, 0);
-  const { name, startDate, endDate } = request.params || {};
-  let query = new Parse.Query('ImageAsset');
-  if (name?.trim()) {
-    const kw = name.trim();
-    // 新记录按原始文件名匹配，兼容无 name 的旧记录按 key 匹配
-    query = Parse.Query.or(
-      new Parse.Query('ImageAsset').contains('name', kw),
-      new Parse.Query('ImageAsset').contains('key', kw)
-    );
-  }
-  query.descending('createdAt');
-  query.limit(limit);
-  query.skip(skip);
-  if (startDate) query.greaterThanOrEqualTo('createdAt', new Date(startDate));
-  if (endDate) query.lessThanOrEqualTo('createdAt', new Date(endDate));
-  const [results, total] = await Promise.all([
-    query.find({ useMasterKey: true }),
-    query.count({ useMasterKey: true }),
-  ]);
-  return { results: results.map(serialize), total };
-});
+// 3. 图床列表（倒序分页 + 名称/日期过滤，total 供前端分页组件；需登录）
+Parse.Cloud.define(
+  'imageHostList',
+  async (request) => {
+    const limit = Math.min(Math.max(parseInt(request.params?.limit, 10) || 20, 1), 100);
+    const skip = Math.max(parseInt(request.params?.skip, 10) || 0, 0);
+    const { name, startDate, endDate } = request.params || {};
+    let query = new Parse.Query('ImageAsset');
+    if (name?.trim()) {
+      const kw = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // 新记录按原始文件名匹配，兼容无 name 的旧记录按 key 匹配；不区分大小写
+      query = Parse.Query.or(
+        new Parse.Query('ImageAsset').matches('name', new RegExp(kw, 'i')),
+        new Parse.Query('ImageAsset').matches('key', new RegExp(kw, 'i'))
+      );
+    }
+    query.descending('createdAt');
+    query.limit(limit);
+    query.skip(skip);
+    if (startDate) query.greaterThanOrEqualTo('createdAt', new Date(startDate));
+    if (endDate) query.lessThanOrEqualTo('createdAt', new Date(endDate));
+    const [results, total] = await Promise.all([
+      query.find({ useMasterKey: true }),
+      query.count({ useMasterKey: true }),
+    ]);
+    // 附带今日配额（页面顶部展示）
+    const quota = {
+      used: await countTodayUploads(request.user.id),
+      limit: DAILY_UPLOAD_LIMIT,
+    };
+    return { results: results.map(serialize), total, quota };
+  },
+  { requireUser: true }
+);
 
 // 4. 删除：仅作者本人可删，OSS 对象 + 记录同步清理
 Parse.Cloud.define(
