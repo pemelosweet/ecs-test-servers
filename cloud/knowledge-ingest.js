@@ -11,6 +11,7 @@ function resolveFile(params) {
   if (!f) throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '缺少文件');
   // file 可能是 Parse.File 实例（url() 方法）或序列化对象（url 属性）
   const url = typeof f === 'string' ? f : typeof f.url === 'function' ? f.url() : f.url;
+  // title 优先取前端传的原始文件名；Parse.File 的 name 是随机安全名不能展示
   const title = params?.title?.trim() || (typeof f === 'object' ? f.name : '') || '未命名文档';
   if (!url) throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '文件 URL 无效');
   return { url, title };
@@ -50,6 +51,9 @@ Parse.Cloud.define(
     doc.set('status', 'parsing'); // 向量化完成前不视为可检索
     doc.set('chunkCount', chunks.length);
     doc.set('author', request.user);
+    // 保留原始文件引用，供列表下载
+    doc.set('fileUrl', url);
+    doc.set('fileName', title);
     await doc.save(null, { useMasterKey: true });
 
     const chunkObjects = chunks.map((c, i) => {
@@ -108,6 +112,8 @@ Parse.Cloud.define(
       mimeType: d.get('mimeType'),
       status: d.get('status'),
       chunkCount: d.get('chunkCount') || 0,
+      fileUrl: d.get('fileUrl') || null,
+      fileName: d.get('fileName') || d.get('title'),
       createdAt: d.get('createdAt') ? d.get('createdAt').toISOString() : null,
     }));
 
@@ -146,6 +152,90 @@ Parse.Cloud.define(
     });
 
     return { ok: true, id };
+  },
+  { requireUser: true }
+);
+
+// 4. 文档切块列表（查看切块结果，按 chunkIndex 升序）
+Parse.Cloud.define(
+  'knowledgeChunks',
+  async (request) => {
+    const { id } = request.params || {};
+    if (!id) throw new Parse.Error(Parse.Error.VALIDATION_ERROR, '缺少文档 ID');
+
+    const q = new Parse.Query('Chunk');
+    q.equalTo('documentId', id);
+    q.ascending('chunkIndex');
+    q.limit(1000);
+    const chunks = await q.find({ useMasterKey: true });
+
+    return {
+      list: chunks.map((c) => ({
+        id: c.id,
+        chunkIndex: c.get('chunkIndex'),
+        content: c.get('content'),
+        tokenCount: c.get('tokenCount') || 0,
+      })),
+    };
+  },
+  { requireUser: true }
+);
+
+// 5. 向量重建（补建）：存量孤儿文档补向量 / 换 embedding 模型后全库重建
+// 传 id：重建单篇（作者本人或管理员）；不传：全库重建（仅管理员）
+// upsert 用 chunkId→确定性 UUID，重复执行幂等覆盖，不产生脏点
+Parse.Cloud.define(
+  'knowledgeReindex',
+  async (request) => {
+    const { id } = request.params || {};
+    const isAdmin = request.user.get('role') === ROLE_ADMIN;
+
+    let docs;
+    if (id) {
+      const doc = await new Parse.Query('Document').get(id, { useMasterKey: true });
+      const owner = doc.get('author');
+      if (!isAdmin && !(owner && owner.id === request.user.id)) {
+        throw new Parse.Error(Parse.Error.OPERATION_FORBIDDEN, '只能重建自己上传的文档');
+      }
+      docs = [doc];
+    } else {
+      if (!isAdmin) {
+        throw new Parse.Error(Parse.Error.OPERATION_FORBIDDEN, '全库重建仅管理员可操作');
+      }
+      const q = new Parse.Query('Document');
+      q.limit(1000);
+      docs = await q.find({ useMasterKey: true });
+    }
+
+    let chunkTotal = 0;
+    for (const doc of docs) {
+      const chunkQuery = new Parse.Query('Chunk');
+      chunkQuery.equalTo('documentId', doc.id);
+      chunkQuery.ascending('chunkIndex');
+      chunkQuery.limit(1000);
+      const chunks = await chunkQuery.find({ useMasterKey: true });
+      if (!chunks.length) continue;
+
+      const vectors = await embedBatch(chunks.map((c) => c.get('content')));
+      await upsertPoints(
+        chunks.map((c, i) => ({
+          chunkId: c.id,
+          vector: vectors[i],
+          payload: {
+            chunkId: c.id,
+            documentId: doc.id,
+            chunkIndex: c.get('chunkIndex') ?? i,
+            title: doc.get('title'),
+          },
+        }))
+      );
+
+      doc.set('status', 'ready');
+      await doc.save(null, { useMasterKey: true });
+      chunkTotal += chunks.length;
+    }
+
+    return { ok: true, docs: docs.length, chunks: chunkTotal };
   },
   { requireUser: true }
 );

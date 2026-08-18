@@ -73,6 +73,9 @@ const SCHEMAS = {
     status: { type: 'String', defaultValue: 'ready' }, // pending | parsing | ready | failed
     chunkCount: { type: 'Number', defaultValue: 0 },
     tags: { type: 'Array' },
+    // 原始上传文件引用（供列表下载；早期入库的文档无此字段）
+    fileName: { type: 'String' },
+    fileUrl: { type: 'String' },
   },
   // 知识库切块（召回的最小单位；向量化后入 Qdrant，用 documentId 关联）
   Chunk: {
