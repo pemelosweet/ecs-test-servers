@@ -3,8 +3,6 @@
 
 // 根据 MIME 类型解析文件 buffer → 纯文本
 async function parseDocument(buffer, mimeType, fileName = '') {
-  console.log(buffer, mimeType, fileName,'===进行文档解析');
-  
   const type = String(mimeType || '').toLowerCase();
   const name = String(fileName || '').toLowerCase();
   let values = '';
@@ -52,13 +50,44 @@ async function parseDocument(buffer, mimeType, fileName = '') {
   throw new Error(`不支持的文档格式：${mimeType || fileName || '未知'}`);
 }
 
-// 文本切块：先按段落聚合，超长再硬切（带重叠），保证语义尽量完整
-function chunkText(text, { maxLen = 600, overlap = 80 } = {}) {
-  const source = String(text || '').trim();
-  if (!source) return [];
+// Markdown 标题行：# ~ ###### + 空格 + 文本
+const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 
-  // 1. 按空行分段，聚合短段落
-  const paragraphs = source
+// 按标题行切分章节，并维护标题路径栈（如「公司规章制度手册 > 2. 考勤管理」）
+// 无标题的纯文本退化为单个空路径章节，走原有段落聚合逻辑
+function splitByHeadings(source) {
+  const sections = [];
+  const stack = []; // [{ level, text }]
+  let body = [];
+
+  const flush = () => {
+    const text = body.join('\n').trim();
+    if (text) {
+      sections.push({ path: stack.map((s) => s.text).join(' > '), body: text });
+    }
+    body = [];
+  };
+
+  for (const line of source.split(/\r?\n/)) {
+    const m = HEADING_RE.exec(line.trim());
+    if (m) {
+      flush();
+      const level = m[1].length;
+      while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
+      stack.push({ level, text: m[2] });
+    } else {
+      body.push(line);
+    }
+  }
+  flush();
+
+  if (!sections.length) sections.push({ path: '', body: source });
+  return sections;
+}
+
+// 章节内切块：空行分段聚合短段落，超长再硬切（带重叠防拦腰截断）
+function splitBody(body, maxLen, overlap) {
+  const paragraphs = body
     .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean);
@@ -66,28 +95,41 @@ function chunkText(text, { maxLen = 600, overlap = 80 } = {}) {
   const merged = [];
   let current = '';
   for (const p of paragraphs) {
-    if (current && current.length + p.length > maxLen) {
-      merged.push(current.trim());
+    if (current && current.length + p.length + 2 > maxLen) {
+      merged.push(current);
       current = p;
     } else {
       current = current ? `${current}\n\n${p}` : p;
     }
   }
-  if (current.trim()) merged.push(current.trim());
+  if (current) merged.push(current);
 
-  // 2. 超长段落硬切（带重叠，防语义拦腰截断）
-  const chunks = [];
+  const out = [];
   for (const c of merged) {
     if (c.length <= maxLen) {
-      chunks.push(c);
+      out.push(c);
       continue;
     }
     let start = 0;
     while (start < c.length) {
       const end = Math.min(start + maxLen, c.length);
-      chunks.push(c.slice(start, end));
+      out.push(c.slice(start, end));
       if (end >= c.length) break;
       start = end - overlap;
+    }
+  }
+  return out;
+}
+
+// 文本切块：标题感知分段（章节不混杂）+ 块首附标题路径（召回单块也带完整上下文）
+function chunkText(text, { maxLen = 600, overlap = 80 } = {}) {
+  const source = String(text || '').trim();
+  if (!source) return [];
+
+  const chunks = [];
+  for (const { path, body } of splitByHeadings(source)) {
+    for (const piece of splitBody(body, maxLen, overlap)) {
+      chunks.push(path ? `${path}\n${piece}` : piece);
     }
   }
 

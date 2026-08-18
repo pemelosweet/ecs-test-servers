@@ -116,6 +116,9 @@ Parse.Cloud.define(
         { temperature: 0.2 }
       );
 
+      // LLM 级拒答（grounding 约束触发）：清空 sources，避免前端「拒答+参考来源」自相矛盾
+      const refused = answer.includes('知识库中未找到相关内容');
+
       await logQuery(
         request,
         question,
@@ -125,12 +128,14 @@ Parse.Cloud.define(
       );
       return {
         answer,
-        sources: materials.map((m) => ({
-          id: m.chunkId,
-          title: m.title,
-          content: m.content.slice(0, 200),
-          score: m.score,
-        })),
+        sources: refused
+          ? []
+          : materials.map((m) => ({
+              id: m.chunkId,
+              title: m.title,
+              content: m.content.slice(0, 200),
+              score: m.score,
+            })),
       };
     } catch (err) {
       console.error('[knowledge] 问答失败：', err.message);
