@@ -15,8 +15,8 @@ const ADMIN_ONLY_MENUS = LOCKED_MENUS;
 
 // 默认菜单权限（MenuPermission 无数据时兜底；新增菜单需同步 menuConfig.jsx）
 const DEFAULT_MENUS = {
-  admin: ['/home', '/org', '/profile', '/images', '/users', '/permissions'],
-  user: ['/home', '/org', '/profile', '/images'],
+  admin: ['/home', '/org', '/profile', '/images', '/knowledge', '/users', '/permissions'],
+  user: ['/home', '/org', '/profile', '/images', '/knowledge'],
 };
 
 module.exports = {

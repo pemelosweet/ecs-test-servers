@@ -65,10 +65,34 @@ const SCHEMAS = {
     role: { type: 'String', required: true },
     menus: { type: 'Array' },
   },
+  // 知识库文档（元数据，正文切块后存 Chunk）
+  Document: {
+    title: { type: 'String', required: true },
+    sourceType: { type: 'String', defaultValue: 'upload' },
+    mimeType: { type: 'String' },
+    status: { type: 'String', defaultValue: 'ready' }, // pending | parsing | ready | failed
+    chunkCount: { type: 'Number', defaultValue: 0 },
+    tags: { type: 'Array' },
+  },
+  // 知识库切块（召回的最小单位；向量化后入 Qdrant，用 documentId 关联）
+  Chunk: {
+    documentId: { type: 'String', required: true },
+    chunkIndex: { type: 'Number', defaultValue: 0 },
+    content: { type: 'String', required: true },
+    tokenCount: { type: 'Number', defaultValue: 0 },
+  },
+  // 问答日志（准确性闭环：召回块 + 后续可挂 👍/👎 反馈，见 docs §8.4）
+  QueryLog: {
+    question: { type: 'String', required: true },
+    answer: { type: 'String' },
+    retrievedChunks: { type: 'Array' },
+    feedback: { type: 'String' }, // up | down | null
+    latency: { type: 'Number' }, // 毫秒
+  },
 };
 
-// MenuPermission 客户端不可直读写（权限变更必须走管理员 Cloud 函数）
-const MENU_PERMISSION_CLPS = {
+// 服务端专用表（菜单权限 / 知识库）：客户端不可直读写，读写都走 Cloud 函数（master key）
+const SERVER_ONLY_CLPS = {
   find: {},
   get: {},
   create: {},
@@ -78,7 +102,10 @@ const MENU_PERMISSION_CLPS = {
 
 const SCHEMA_CLPS = {
   ImageAsset: IMAGE_ASSET_CLPS,
-  MenuPermission: MENU_PERMISSION_CLPS,
+  MenuPermission: SERVER_ONLY_CLPS,
+  Document: SERVER_ONLY_CLPS,
+  Chunk: SERVER_ONLY_CLPS,
+  QueryLog: SERVER_ONLY_CLPS,
 };
 
 // _User 扩展字段：角色 + 状态（由 schema 同步保证字段存在）

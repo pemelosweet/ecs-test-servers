@@ -16,7 +16,10 @@
     "@parse/s3-files-adapter": "^5.3.1",
     "dotenv": "^17.4.2",
     "express": "^4.21.0",
+    "mammoth": "^1.12.1",
     "parse-dashboard": "^6.0.0",
-    "parse-server": "^9.10.0"
+    "parse-server": "^9.10.0",
+    "pdf-parse": "^2.4.5",
+    "xlsx": "^0.18.5"
   }
 }

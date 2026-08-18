@@ -69,6 +69,29 @@ const config = {
     INIT_USERNAME: process.env.ADMIN_INIT_USERNAME || 'xmg001', // 非密钥
     INIT_PASSWORD: process.env.ADMIN_INIT_PASSWORD || 'admin123456', // 生产务必覆盖
   },
+
+  // ---------- 知识库（RAG） ----------
+  KNOWLEDGE: {
+    // DeepSeek 对话模型（key 为密钥；DeepSeek 无 embedding 接口，向量化方案 见 docs/rag-knowledge-base.md）
+    LLM_API_KEY: process.env.DEEPSEEK_API_KEY || '',
+    LLM_BASE_URL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
+    LLM_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    // Embedding：阿里云百炼 DashScope（OpenAI 兼容模式），key 为密钥
+    EMBEDDING_API_KEY: process.env.DASHSCOPE_API_KEY || '',
+    EMBEDDING_BASE_URL: process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    EMBEDDING_MODEL: process.env.DASHSCOPE_MODEL || 'text-embedding-v3',
+    EMBEDDING_DIMENSIONS: parseInt(process.env.DASHSCOPE_DIMENSIONS, 10) || 1024,
+    EMBEDDING_BATCH_LIMIT: 10, // text-embedding-v3 单次最多 10 条
+    // Qdrant 向量库（本机部署，仅内网访问；集合名固定，向量与 Mongo Chunk 用 chunkId 关联）
+    QDRANT_URL: process.env.QDRANT_URL || 'http://127.0.0.1:6333',
+    QDRANT_API_KEY: process.env.QDRANT_API_KEY || '',
+    QDRANT_COLLECTION: 'knowledge',
+    // 检索参数：候选数 → 阈值过滤 → 取 topK 拼 prompt（重排暂缓，见 docs §3）
+    RETRIEVAL_CANDIDATES: 20,
+    RETRIEVAL_TOP_K: 5,
+    RETRIEVAL_SCORE_THRESHOLD: 0.25, // cosine 相似度低于此值视为未命中 → 拒答
+    MAX_CONTEXT_CHARS: 6000, // 拼进 prompt 的召回正文总长上限
+  },
 };
 
 // 启动自检：生产的对外地址绝不能是本地回环，防本地 .env 误抄进 PROD_ENV 的事故

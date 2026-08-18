@@ -15,6 +15,8 @@ const { CAPTCHA } = require('../config');
 require('./image-hosting');
 require('./password-reset');
 require('./admin');
+require('./knowledge');
+require('./knowledge-ingest');
 
 // Org 保存前：校验组织名称 + 自动记录作者
 Parse.Cloud.beforeSave('Org', (request) => {
