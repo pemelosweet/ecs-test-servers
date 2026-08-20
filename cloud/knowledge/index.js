@@ -1,11 +1,12 @@
 // 知识库问答 Cloud 函数（RAG 检索增强生成）
+// 模块结构：index.js（问答）+ ingest.js（文档摄入）+ doc-parser / llm / embedding / qdrant（链路组件）
 // 接口契约：
 //   入参：{ question: string }
 //   返回：{ answer: string, sources: [{ id, title, content, score }] }
 // 链路：question → embedding → Qdrant 召回（带阈值）→ 按 chunkId 回 Mongo 取正文
 //      → grounding prompt（强制 [1][2] 引用 + 拒答）→ DeepSeek → 写 QueryLog
 // 技术调研见 docs/rag-knowledge-base.md
-const config = require('../config');
+const config = require('../../config');
 const { chat } = require('./llm');
 const { embed } = require('./embedding');
 const { search } = require('./qdrant');

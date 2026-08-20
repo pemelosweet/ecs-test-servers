@@ -1,7 +1,12 @@
 // Cloud Code 入口：beforeSave 触发器（数据校验 + 自动补字段）+ 注册/短信 Cloud 函数
 // 业务读写走 /classes REST 直连；注册走下方 register 函数（唯一建号入口）
-// 第三方集成已抽离：阿里云短信见 aliyun-sms.js，图形认证见 aliyun-captcha.js
-// 图床（OSS 签名直传）见 image-hosting.js
+// 功能模块按职责组织：
+//   knowledge/         → 知识库 RAG（问答 + 摄入，内含 llm/embedding/qdrant 等链路组件）
+//   admin.js           → 管理端（用户管理 + 菜单权限）
+//   image-hosting.js   → 图床（OSS 签名直传）
+//   password-reset.js  → 短信重置密码
+//   aliyun-sms.js / aliyun-captcha.js → 第三方集成（短信 / 图形认证）
+//   admin-constants.js / oss-sign.js  → 跨模块共享常量与工具
 const {
   sendSmsCode,
   verifySmsCode,
@@ -15,8 +20,8 @@ const { CAPTCHA } = require('../config');
 require('./image-hosting');
 require('./password-reset');
 require('./admin');
-require('./knowledge');
-require('./knowledge-ingest');
+require('./knowledge'); // 解析为 knowledge/index.js（问答）
+require('./knowledge/ingest');
 
 // Org 保存前：校验组织名称 + 自动记录作者
 Parse.Cloud.beforeSave('Org', (request) => {

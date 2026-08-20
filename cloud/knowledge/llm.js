@@ -1,7 +1,7 @@
 // DeepSeek 对话模型封装（OpenAI 兼容接口）
 // 纯函数、不依赖 Parse（风格对齐 oss-sign.js，便于单测）
 // 说明：DeepSeek 仅提供 chat 接口，无 embedding 接口；向量化方案见 docs/rag-knowledge-base.md
-const config = require('../config');
+const config = require('../../config');
 
 // 通义千问 → DeepSeek：聊天补全（默认 deepseek-chat，见 config.KNOWLEDGE.LLM_MODEL）
 async function chat(messages, { temperature = 0.7, maxTokens } = {}) {

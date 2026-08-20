@@ -1,7 +1,7 @@
 // Qdrant REST 客户端（纯函数、不依赖 Parse，风格对齐 llm.js）
 // 部署与安全见 docs/rag-knowledge-base.md §9：仅内网 127.0.0.1 暴露
 const crypto = require('crypto');
-const config = require('../config');
+const config = require('../../config');
 
 function qdrantBase() {
   return config.KNOWLEDGE.QDRANT_URL.replace(/\/$/, '');

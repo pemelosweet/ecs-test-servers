@@ -1,7 +1,7 @@
 // DashScope text-embedding-v3 封装（阿里云百炼 OpenAI 兼容模式）
 // 纯函数、不依赖 Parse（风格对齐 llm.js，便于单测）
 // 说明：DeepSeek 无 embedding 接口，向量化独立走 DashScope；方案见 docs/rag-knowledge-base.md §2.2
-const config = require('../config');
+const config = require('../../config');
 
 // DashScope 单次请求文本条数上限（text-embedding-v3 为 10 条）
 function embed(texts) {

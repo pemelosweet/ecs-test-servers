@@ -3,7 +3,7 @@
 const { parseDocument, chunkText } = require('./doc-parser');
 const { embedBatch } = require('./embedding');
 const { upsertPoints, deleteByDocument } = require('./qdrant');
-const { ROLE_ADMIN } = require('./admin-constants');
+const { ROLE_ADMIN } = require('../admin-constants');
 
 // 从 request.params 解析文件 URL 与标题
 function resolveFile(params) {

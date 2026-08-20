@@ -29,11 +29,11 @@
 
 | 方案 | 说明 | 结论 |
 | --- | --- | --- |
-| **A. DashScope text-embedding-v3** | 阿里云托管，中文强，维度可配（默认 1024），便宜 | ✅ **已接入**（cloud/embedding.js，DASHSCOPE_API_KEY） |
+| **A. DashScope text-embedding-v3** | 阿里云托管，中文强，维度可配（默认 1024），便宜 | ✅ **已接入**（cloud/knowledge/embedding.js，DASHSCOPE_API_KEY） |
 | B. bge-large-zh / bge-m3 | 开源，本地 Ollama 跑 | 需 GPU，运维重 | 备选（离线/免费场景） |
 | C. OpenAI text-embedding-3 | 英文强 | 需另开账号、跨境延迟 | 不用 |
 
-> 当前 LLM 已选用 DeepSeek，但 DeepSeek **不提供 embedding 接口**，故向量化单独走 DashScope（已接入 cloud/embedding.js）。
+> 当前 LLM 已选用 DeepSeek，但 DeepSeek **不提供 embedding 接口**，故向量化单独走 DashScope（已接入 cloud/knowledge/embedding.js）。
 
 ### 2.3 LLM（生成）
 
