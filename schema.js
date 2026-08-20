@@ -92,6 +92,12 @@ const SCHEMAS = {
     feedback: { type: 'String' }, // up | down | null
     latency: { type: 'Number' }, // 毫秒
   },
+  // 聊天会话（首页历史对话：标题 + 消息数组；对象级 ACL 隔离到个人，见 CHAT_SESSION_CLPS）
+  ChatSession: {
+    title: { type: 'String', required: true },
+    // [{ role, content, sources?, error?, at }]
+    messages: { type: 'Array' },
+  },
 };
 
 // 服务端专用表（菜单权限 / 知识库）：客户端不可直读写，读写都走 Cloud 函数（master key）
@@ -103,12 +109,22 @@ const SERVER_ONLY_CLPS = {
   delete: {},
 };
 
+// 聊天会话：登录用户可操作自己的会话（对象级 ACL 再隔离到个人）
+const CHAT_SESSION_CLPS = {
+  find: { requiresAuthentication: true },
+  get: { requiresAuthentication: true },
+  create: { requiresAuthentication: true },
+  update: { requiresAuthentication: true },
+  delete: { requiresAuthentication: true },
+};
+
 const SCHEMA_CLPS = {
   ImageAsset: IMAGE_ASSET_CLPS,
   MenuPermission: SERVER_ONLY_CLPS,
   Document: SERVER_ONLY_CLPS,
   Chunk: SERVER_ONLY_CLPS,
   QueryLog: SERVER_ONLY_CLPS,
+  ChatSession: CHAT_SESSION_CLPS,
 };
 
 // _User 扩展字段：角色 + 状态（由 schema 同步保证字段存在）
