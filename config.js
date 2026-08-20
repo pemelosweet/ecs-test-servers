@@ -72,16 +72,16 @@ const config = {
 
   // ---------- 知识库（RAG） ----------
   KNOWLEDGE: {
-    // DeepSeek 对话模型（key 为密钥；DeepSeek 无 embedding 接口，向量化方案 见 docs/rag-knowledge-base.md）
-    LLM_API_KEY: process.env.DEEPSEEK_API_KEY || '',
-    LLM_BASE_URL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
-    LLM_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    // 对话 LLM：任意 OpenAI 兼容服务（DeepSeek / OpenAI / 通义 / vLLM…），key 为密钥
+    LLM_API_KEY: process.env.LLM_API_KEY || '',
+    LLM_BASE_URL: process.env.LLM_BASE_URL || 'https://api.deepseek.com',
+    LLM_MODEL: process.env.LLM_MODEL || 'deepseek-chat',
     // Embedding：阿里云百炼 DashScope（OpenAI 兼容模式），key 为密钥
     EMBEDDING_API_KEY: process.env.DASHSCOPE_API_KEY || '',
     EMBEDDING_BASE_URL: process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    EMBEDDING_MODEL: process.env.DASHSCOPE_MODEL || 'text-embedding-v3',
+    EMBEDDING_MODEL: process.env.DASHSCOPE_MODEL || 'text-embedding-v4',
     EMBEDDING_DIMENSIONS: parseInt(process.env.DASHSCOPE_DIMENSIONS, 10) || 1024,
-    EMBEDDING_BATCH_LIMIT: 10, // text-embedding-v3 单次最多 10 条
+    EMBEDDING_BATCH_LIMIT: 10, // text-embedding-v4 单次最多 10 条
     // Qdrant 向量库（本机部署，仅内网访问；集合名固定，向量与 Mongo Chunk 用 chunkId 关联）
     QDRANT_URL: process.env.QDRANT_URL || 'http://127.0.0.1:6333',
     QDRANT_API_KEY: process.env.QDRANT_API_KEY || '',

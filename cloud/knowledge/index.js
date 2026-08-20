@@ -17,7 +17,7 @@ function assertReady() {
   if (!LLM_API_KEY || !EMBEDDING_API_KEY) {
     throw new Parse.Error(
       Parse.Error.VALIDATION_ERROR,
-      '知识库服务尚未配置（缺少 DEEPSEEK_API_KEY / DASHSCOPE_API_KEY），请联系管理员'
+      '知识库服务尚未配置（缺少 LLM_API_KEY / DASHSCOPE_API_KEY），请联系管理员'
     );
   }
 }

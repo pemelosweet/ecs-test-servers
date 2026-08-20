@@ -1,13 +1,13 @@
-// DeepSeek 对话模型封装（OpenAI 兼容接口）
+// 对话 LLM 封装（任意 OpenAI 兼容接口：DeepSeek / OpenAI / 通义 / vLLM…）
 // 纯函数、不依赖 Parse（风格对齐 oss-sign.js，便于单测）
-// 说明：DeepSeek 仅提供 chat 接口，无 embedding 接口；向量化方案见 docs/rag-knowledge-base.md
+// 说明：所选服务需支持 chat/completions；embedding 另走 DashScope，见 docs/rag-knowledge-base.md
 const config = require('../../config');
 
-// 通义千问 → DeepSeek：聊天补全（默认 deepseek-chat，见 config.KNOWLEDGE.LLM_MODEL）
+// 聊天补全（默认 deepseek-chat，见 config.KNOWLEDGE.LLM_MODEL）
 async function chat(messages, { temperature = 0.7, maxTokens } = {}) {
   const { LLM_API_KEY, LLM_BASE_URL, LLM_MODEL } = config.KNOWLEDGE;
   if (!LLM_API_KEY) {
-    throw new Error('缺少 DEEPSEEK_API_KEY，请在 .env 配置');
+    throw new Error('缺少 LLM_API_KEY，请在 .env 配置');
   }
 
   const body = {

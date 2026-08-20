@@ -29,7 +29,7 @@
 
 | 方案 | 说明 | 结论 |
 | --- | --- | --- |
-| **A. DashScope text-embedding-v3** | 阿里云托管，中文强，维度可配（默认 1024），便宜 | ✅ **已接入**（cloud/knowledge/embedding.js，DASHSCOPE_API_KEY） |
+| **A. DashScope text-embedding-v4** | 阿里云托管，中文强，维度可配（默认 1024），便宜 | ✅ **已接入**（cloud/knowledge/embedding.js，DASHSCOPE_API_KEY） |
 | B. bge-large-zh / bge-m3 | 开源，本地 Ollama 跑 | 需 GPU，运维重 | 备选（离线/免费场景） |
 | C. OpenAI text-embedding-3 | 英文强 | 需另开账号、跨境延迟 | 不用 |
 
@@ -61,7 +61,7 @@
 | 组件 | 选择 | 理由 |
 | --- | --- | --- |
 | 向量库 | **Qdrant**（Docker 自托管） | 见 §2.1 |
-| Embedding | **DashScope text-embedding-v3**（已接入） | DeepSeek 无 embedding，百炼 key 走 .env |
+| Embedding | **DashScope text-embedding-v4**（已接入） | DeepSeek 无 embedding，百炼 key 走 .env |
 | LLM | **DeepSeek deepseek-chat** | 中文强、已有 key |
 | 重排 | 暂缓（召回接好后再加 rerank） | — |
 | 文档解析 | pdf-parse / mammoth / xlsx | 覆盖 PDF/Word/Excel |
@@ -117,7 +117,7 @@ sequenceDiagram
     participant DS as DeepSeek
 
     U->>CF: askKnowledge({question})
-    CF->>CF: assertReady() 校验 DEEPSEEK_API_KEY
+    CF->>CF: assertReady() 校验 LLM_API_KEY
     CF->>DS: chat(system + user)
     DS-->>CF: answer 文本
     CF-->>U: {answer, sources: []}
